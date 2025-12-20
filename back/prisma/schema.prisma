@@ -1,0 +1,93 @@
+
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductStatus {
+  active
+  inactive
+  draft
+}
+
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String   // 存储加密后的密码
+  email     String?  @unique
+  role      String   @default("user") // user/admin
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+ 
+  // 关联关系
+  cartItems CartItem[]
+  orders    Order[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  price       Float
+  stock       Int      @default(0)
+  description String?
+  image       String?  // 商品图片URL
+  category    String?
+  createdAt   DateTime @default(now())
+  
+  
+  status    ProductStatus  @default(active)
+  // 关联关系
+  cartItems CartItem[]
+  orderItems OrderItem[]
+}
+
+model CartItem {
+  id        Int     @id @default(autoincrement())
+  quantity  Int     @default(1)
+  userId    Int
+  productId Int
+  user      User    @relation(fields: [userId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id         Int       @id @default(autoincrement())
+  totalPrice Float
+  status     String    @default("pending") // pending/paid/shipped/delivered
+  userId     Int
+  createdAt  DateTime  @default(now())
+  
+  user      User       @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  orderNo     String   @unique  // 订单号，用于展示给用户
+  address     Json?             // 收货地址（JSON格式存储）
+  paymentMethod String?         // 支付方式
+  paidAt      DateTime?         // 支付时间
+  shippedAt   DateTime?         // 发货时间
+  deliveredAt DateTime?
+  trackingNumber String?  // 新增：运单号
+  
+  note        String?
+    // 索引
+  @@index([orderNo])
+  @@index([userId, createdAt])
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  quantity  Int
+  price     Float   // 下单时的价格
+  orderId   Int
+  productId Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+}
