@@ -1,0 +1,23 @@
+stages:
+  - build
+  - test
+  - deploy
+
+# 不指定标签，允许任何 Runner
+build-job:
+  stage: build
+  script:
+    - echo "编译代码..."
+    - echo "编译完成。"
+
+unit-test-job:
+  stage: test
+  script:
+    - echo "运行单元测试..."
+    - echo "测试完成。"
+
+deploy-job:
+  stage: deploy
+  script:
+    - echo "部署应用..."
+    - echo "部署完成。"
