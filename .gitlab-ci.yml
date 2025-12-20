@@ -20,4 +20,44 @@ deploy-job:
   stage: deploy
   script:
     - echo "部署应用..."
-    - echo "部署完成。"
+    - echo "部署完成。"stages:
+  - ".pre"
+  - build
+  - test
+  - deploy
+  - ".post"
+
+build-job:
+  stage: build
+  tags:
+    - local
+  script:
+    - echo "Compiling the code..."
+    - echo "Compile complete."
+
+unit-test-job:
+  stage: test
+  tags:
+    - local
+  script:
+    - echo "Running unit tests... This will take about 60 seconds."
+    - sleep 60
+    - echo "Code coverage is 90%"
+
+lint-test-job:
+  stage: test
+  tags:
+    - local
+  script:
+    - echo "Linting code... This will take about 10 seconds."
+    - sleep 10
+    - echo "No lint issues found."
+
+deploy-job:
+  stage: deploy
+  environment: production
+  tags:
+    - local
+  script:
+    - echo "Deploying application..."
+    - echo "Application successfully deployed."
