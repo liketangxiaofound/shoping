@@ -4,6 +4,38 @@ stages:
   - test
   - deploy
 
+validate-code:
+  stage: validate
+  script:
+  - |
+      if [ -d "back" ]; then
+        echo "检查后端代码 (back/)..."
+        cd back
+        echo "找到JavaScript文件:"
+        find . -name "*.js" | wc -l
+        
+        # 检查语法错误
+        echo "检查语法错误..."
+        error_count=0
+        for file in $(find . -name "*.js"); do
+          if node -c "$file" 2>/dev/null; then
+            echo "  ✅ $file - 语法正确"
+          else
+            echo "  ❌ $file - 语法错误"
+            error_count=$((error_count+1))
+          fi
+        done
+        
+        if [ $error_count -eq 0 ]; then
+          echo "✅ 后端代码语法检查通过"
+        else
+          echo "⚠️  发现 $error_count 个语法错误"
+        fi
+        cd ..
+      else
+        echo "⚠️  后端目录不存在"
+      fi
+      
 # 不指定标签，让任何可用的 Runner 都可以执行
 build-job:
   stage: build
