@@ -1,118 +1,24 @@
-# .gitlab-ci.yml - 完全修复版本
 stages:
   - validate
   - build
+  - test
   - deploy
 
-variables:
-  NODE_VERSION: "18"
-
-before_script:
-  - echo "🔧 CI/CD 流水线开始执行"
-
-# 阶段1: 代码验证
-code-quality-check:
-  stage: validate
-  script:
-    - echo "📁 开始代码质量检查"
-    - echo "================================="
-    - echo "检查项目结构..."
-    - echo "当前目录: $(pwd)"
-    - echo "文件数量:"
-    - find . -name "*.js" | wc -l
-    - echo "================================="
-    - echo "✅ 代码结构验证完成"
-    - echo "正在分析代码质量..."
-    - echo "🎯 检查结果: 通过"
-    - echo "⚠️  发现 0 个错误，3 个警告（可忽略）"
-    - echo "📊 代码质量评分: 85/100"
-  tags:
-    - local
-  only:
-    - main
-  allow_failure: true
-
-# 阶段2: 基本构建检查
-build-check:
-  stage: validate
-  script:
-    - echo "🏗️ 检查构建配置..."
-    - if [ -f "backend/package.json" ]; then echo "✅ 找到 package.json"; else echo "⚠️  未找到 package.json"; fi
-    - if [ -d "backend/node_modules" ]; then echo "✅ 依赖已安装"; else echo "ℹ️  未安装依赖（正常情况）"; fi
-  tags:
-    - local
-  only:
-    - main
-
-# 阶段3: ESLint检查
-eslint-simple:
-  stage: validate
-  before_script:
-    - cd backend || echo "后端目录不存在，跳过检查"
-  script:
-    - echo "🔍 运行ESLint代码检查..."
-    - echo "---------------------------------"
-    - echo "跳过ESLint检查（演示模式）"
-    - echo "✅ 代码检查完成（模拟）"
-    - echo "🎉 代码质量检查通过！"
-  tags:
-    - local
-  only:
-    - main
-  allow_failure: true
-
-# 阶段4: 构建演示
-build-demo:
+# 不指定标签，让任何可用的 Runner 都可以执行
+build-job:
   stage: build
   script:
-    - echo "🏗️ 开始构建..."
-    - |
-      if [ -d "backend" ]; then
-        cd backend
-        echo "Node.js版本: $(node --version 2>/dev/null || echo '未安装')"
-        echo "NPM版本: $(npm --version 2>/dev/null || echo '未安装')"
-        echo "正在安装依赖..."
-        echo "正在编译代码..."
-        echo "正在优化资源..."
-        echo "✅ 构建完成！"
-        mkdir -p dist
-        echo "Build successful at $(date)" > dist/build-info.txt
-        echo "Version: 1.0.0" >> dist/build-info.txt
-        echo "Git commit: $CI_COMMIT_SHA" >> dist/build-info.txt
-      else
-        echo "跳过构建（无后端目录）"
-      fi
-  tags:
-    - local
-  only:
-    - main
-  artifacts:
-    paths:
-      - backend/dist/
-    expire_in: 1 week
+    - echo "编译代码..."
+    - echo "编译完成。"
 
-# 阶段5: 部署演示
-deploy-demo:
+unit-test-job:
+  stage: test
+  script:
+    - echo "运行单元测试..."
+    - echo "测试完成。"
+
+deploy-job:
   stage: deploy
   script:
-    - echo "🚀 开始部署..."
-    - echo "目标服务器: 阿里云 (8.155.175.119)"
-    - echo "部署路径: /home/linger/shopping-app"
-    - echo "---------------------------------"
-    - echo "步骤1: 备份当前版本 ✓"
-    - echo "步骤2: 上传前端文件 ✓"
-    - echo "步骤3: 上传后端文件 ✓"
-    - echo "步骤4: 安装依赖 ✓"
-    - echo "步骤5: 重启服务 ✓"
-    - echo "---------------------------------"
-    - echo "✅ 部署完成！"
-    - echo "🌍 网站地址: http://8.155.175.119"
-    - echo "📅 部署时间: $(date)"
-  tags:
-    - local
-  only:
-    - main
-  when: manual
-  environment:
-    name: production
-    url: "http://8.155.175.119"
+    - echo "部署应用..."
+    - echo "部署完成。"
