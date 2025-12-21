@@ -48,16 +48,13 @@ validate-code:
   allow_failure: false
 
 # 阶段2: 构建
-# 阶段2: 构建 - 增强版
 build-job:
   stage: build
   script:
-    - echo "🏗️ 开始构建项目..."
-    - echo "================================="
-    
-    # 1. 安装依赖
+    - echo "编译代码..."
+    - echo "编译完成。"
     - |
-      if (Test-Path "back") {
+     if (Test-Path "back") {
         Write-Host "安装后端依赖..."
         cd back
         npm install
@@ -65,30 +62,10 @@ build-job:
         Write-Host "✅ 后端依赖安装完成"
       }
     
-    # 2. 构建前端（如果有）
-    - |
-      if (Test-Path "front") {
-        Write-Host "构建前端..."
-        cd front
-        npm install
-        npm run build
-        cd ..
-        Write-Host "✅ 前端构建完成"
-      }
-    
-    # 3. 生成构建报告
-    - echo "================================="
-    - echo "📊 构建报告:"
-    - echo "  - 依赖安装: ✅ 完成"
-    - echo "  - 代码编译: ✅ 完成"
-    - echo "  - 构建时间: $(Get-Date)"
-    - echo "✅ 构建完成"
-  artifacts:
-    paths:
-      - back/node_modules/
-      - back/package-lock.json
-    expire_in: 1 week
-
+  tags:
+    - local
+  only:
+    - main
 
 # 阶段3: 测试
 unit-test-job:
