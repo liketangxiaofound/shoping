@@ -61,7 +61,16 @@ build-job:
         cd ..
         Write-Host "✅ 后端依赖安装完成"
       }
-    
+     # 2. 构建前端（如果有）
+    - |
+      if (Test-Path "front") {
+        Write-Host "构建前端..."
+        cd front
+        npm install
+        npm run build
+        cd ..
+        Write-Host "✅ 前端构建完成"
+      }
   tags:
     - local
   only:
