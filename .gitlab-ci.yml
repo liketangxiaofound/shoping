@@ -1,63 +1,24 @@
-# .gitlab-ci.yml - 绝对正确版本
 stages:
   - validate
   - build
   - test
   - deploy
 
-# 阶段1: 代码验证
-validate-code:
-  stage: validate
-  script:
-    - echo "🔍 开始代码质量检查..."
-    - echo "检查后端代码..."
-    - echo "检查前端代码..."
-    - echo "✅ 代码质量检查完成"
-  tags:
-    - local
-  only:
-    - main
-
-# 阶段2: 构建
+# 不指定标签，让任何可用的 Runner 都可以执行
 build-job:
   stage: build
   script:
-    - echo "🏗️ 编译代码..."
-    - echo "✅ 编译完成。"
-  tags:
-    - local
-  only:
-    - main
-  artifacts:
-    paths:
-      - back/
-      - front/
-    expire_in: 1 week
+    - echo "编译代码..."
+    - echo "编译完成。"
 
-# 阶段3: 测试
 unit-test-job:
   stage: test
   script:
-    - echo "🧪 运行单元测试..."
-    - echo "✅ 测试完成。"
-  tags:
-    - local
-  only:
-    - main
-  allow_failure: true
+    - echo "运行单元测试..."
+    - echo "测试完成。"
 
-# 阶段4: 部署
 deploy-job:
   stage: deploy
   script:
-    - echo "🚀 部署应用到阿里云服务器..."
-    - echo "目标服务器: 8.155.175.119"
-    - echo "✅ 部署完成！"
-  tags:
-    - local
-  only:
-    - main
-  when: manual
-  environment:
-    name: production
-    url: "http://8.155.175.119"
+    - echo "部署应用..."
+    - echo "部署完成。"
