@@ -1,56 +1,83 @@
+# .gitlab-ci.yml
 stages:
   - validate
   - build
   - test
   - deploy
 
+# 阶段1: 代码验证
 validate-code:
   stage: validate
   script:
-  - |
-      if [ -d "back" ]; then
-        echo "检查后端代码 (back/)..."
+    - echo "🔍 开始代码语法检查..."
+    - echo "================================="
+    - |
+      # 检查后端目录是否存在
+      if (Test-Path "back") {
+        Write-Host "检查后端代码 (back/)..."
         cd back
-        echo "找到JavaScript文件:"
-        find . -name "*.js" | wc -l
+        $jsFiles = Get-ChildItem -Recurse -Filter *.js
+        Write-Host "找到JavaScript文件: $($jsFiles.Count)"
         
         # 检查语法错误
-        echo "检查语法错误..."
-        error_count=0
-        for file in $(find . -name "*.js"); do
-          if node -c "$file" 2>/dev/null; then
-            echo "  ✅ $file - 语法正确"
-          else
-            echo "  ❌ $file - 语法错误"
-            error_count=$((error_count+1))
-          fi
-        done
+        Write-Host "检查语法错误..."
+        $errorCount = 0
+        foreach ($file in $jsFiles) {
+          if (node -c $file.FullName 2>$null) {
+            Write-Host "  ✅ $($file.Name) - 语法正确"
+          } else {
+            Write-Host "  ❌ $($file.Name) - 语法错误"
+            $errorCount++
+          }
+        }
         
-        if [ $error_count -eq 0 ]; then
-          echo "✅ 后端代码语法检查通过"
-        else
-          echo "⚠️  发现 $error_count 个语法错误"
-        fi
+        if ($errorCount -eq 0) {
+          Write-Host "✅ 后端代码语法检查通过"
+        } else {
+          Write-Host "⚠️  发现 $errorCount 个语法错误"
+        }
         cd ..
-      else
-        echo "⚠️  后端目录不存在"
-      fi
-      
-# 不指定标签，让任何可用的 Runner 都可以执行
+      } else {
+        Write-Host "⚠️  后端目录不存在"
+      }
+    - echo "================================="
+  tags:
+    - local
+  only:
+    - main
+  allow_failure: false
+
+# 阶段2: 构建
 build-job:
   stage: build
   script:
     - echo "编译代码..."
     - echo "编译完成。"
+  tags:
+    - local
+  only:
+    - main
 
+# 阶段3: 测试
 unit-test-job:
   stage: test
   script:
     - echo "运行单元测试..."
     - echo "测试完成。"
+  tags:
+    - local
+  only:
+    - main
+  allow_failure: true
 
+# 阶段4: 部署
 deploy-job:
   stage: deploy
   script:
     - echo "部署应用..."
     - echo "部署完成。"
+  tags:
+    - local
+  only:
+    - main
+  when: manual
