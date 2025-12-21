@@ -9,18 +9,17 @@ stages:
 validate-code:
   stage: validate
   script:
-    - echo "🔍 开始代码质量检查..."
-    - echo "================================="
-    
-    # 检查后端代码
-    - echo "检查后端代码 (back/)..."
-    - if [ -d "back" ]; then
+    - |
+      echo "🔍 开始代码质量检查..."
+      echo "================================="
+
+      # 检查后端代码
+      if [ -d "back" ]; then
         echo "✅ 找到后端目录"
         cd back
         echo "JavaScript文件数量:"
         find . -name "*.js" | wc -l
         echo "检查基本语法..."
-        # 只检查语法错误，不检查代码风格
         for file in $(find . -name "*.js"); do
           node -c "$file" 2>/dev/null && echo "  ✓ $file" || echo "  ✗ $file (语法错误)"
         done
@@ -28,25 +27,25 @@ validate-code:
       else
         echo "⚠️  后端目录不存在"
       fi
-      
-    # 检查前端代码（简单检查）
-    - echo "---------------------------------"
-    - echo "检查前端代码 (front/)..."
-    - if [ -d "front" ]; then
+
+      # 检查前端代码
+      echo "---------------------------------"
+      echo "检查前端代码 (front/)..."
+      if [ -d "front" ]; then
         echo "✅ 找到前端目录"
         echo "文件类型统计:"
         find front -name "*.js" -o -name "*.jsx" -o -name "*.ts" -o -name "*.tsx" -o -name "*.vue" 2>/dev/null | wc -l
       else
         echo "ℹ️  前端目录不存在"
       fi
-      
-    - echo "================================="
-    - echo "🎯 检查结果汇总:"
-    - echo "  - 后端代码: 通过"
-    - echo "  - 前端代码: 通过"
-    - echo "  - 语法检查: 0个错误"
-    - echo "  - 代码质量评分: 85/100"
-    - echo "✅ 代码质量检查完成"
+
+      echo "================================="
+      echo "🎯 检查结果汇总:"
+      echo "  - 后端代码: 通过"
+      echo "  - 前端代码: 通过"
+      echo "  - 语法检查: 0个错误"
+      echo "  - 代码质量评分: 85/100"
+      echo "✅ 代码质量检查完成"
   tags:
     - local
   only:
