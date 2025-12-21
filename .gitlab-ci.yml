@@ -92,8 +92,43 @@ unit-test-job:
 deploy-job:
   stage: deploy
   script:
-    - echo "部署应用..."
-    - echo "部署完成。"
+    - echo "🚀 开始部署到阿里云服务器..."
+    - echo "================================="
+    
+    # 1. 配置变量
+    - $server = "8.155.175.119"
+    - $user = "linger"
+    - $deployPath = "/home/linger/shopping-app"
+    - $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    
+    # 2. 准备部署包
+    - Write-Host "步骤1: 准备部署包..."
+    - Compress-Archive -Path back/* -DestinationPath "deploy-back-$timestamp.zip"
+    - Write-Host "✅ 部署包准备完成"
+    
+    # 3. 备份当前版本
+    - Write-Host "步骤2: 备份当前版本..."
+    - ssh ${user}@${server} "cd $deployPath && tar -czf backup-$timestamp.tar.gz ."
+    - Write-Host "✅ 备份完成"
+    
+    # 4. 上传新版本
+    - Write-Host "步骤3: 上传新版本..."
+    - scp "deploy-back-$timestamp.zip" ${user}@${server}:"${deployPath}/deploy-back-$timestamp.zip"
+    
+    # 5. 部署
+    - Write-Host "步骤4: 部署应用..."
+    - ssh ${user}@${server} "
+        cd $deployPath
+        unzip -o deploy-back-$timestamp.zip
+        rm deploy-back-$timestamp.zip
+        npm install --production
+        pm2 restart shopping-app || pm2 start app.js --name shopping-app
+      "
+    
+    # 6. 清理
+    - Remove-Item "deploy-back-$timestamp.zip"
+    
+    - echo "================================="
   tags:
     - local
   only:
