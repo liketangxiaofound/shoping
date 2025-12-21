@@ -1,4 +1,4 @@
-# .gitlab-ci.yml - 完整修复版本
+# .gitlab-ci.yml - 完全修复版本
 stages:
   - validate
   - build
@@ -66,7 +66,8 @@ build-demo:
   stage: build
   script:
     - echo "🏗️ 开始构建..."
-    - if [ -d "backend" ]; then
+    - |
+      if [ -d "backend" ]; then
         cd backend
         echo "Node.js版本: $(node --version 2>/dev/null || echo '未安装')"
         echo "NPM版本: $(npm --version 2>/dev/null || echo '未安装')"
@@ -114,4 +115,4 @@ deploy-demo:
   when: manual
   environment:
     name: production
-    url: http://8.155.175.119
+    url: "http://8.155.175.119"
