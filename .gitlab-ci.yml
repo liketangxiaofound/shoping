@@ -114,16 +114,16 @@ deploy-semi-auto:
         Write-Host "✅ SSH 私钥已配置"
       } else {
         Write-Host "⚠️ 未设置 SSH_PRIVATE_KEY 变量" -ForegroundColor Yellow
-        Write-Host "请在 GitLab CI/CD Variables 中添加 SSH_PRIVATE_KEY"
+        Write-Host "请在 GitLab CI/CD Variables 中添加 SSH_PRIVATE_KEY（类型为 Variable）"
         exit 1
       }
       
-      # 测试连通性
+      # 测试服务器连通性
       Write-Host "🔌 测试服务器连通性..."
-      if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet) {
+      if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet -ErrorAction SilentlyContinue) {
         Write-Host "✅ 服务器可以连通"
       } else {
-        Write-Host "❌ 无法 ping 通服务器" -ForegroundColor Red
+        Write-Host "❌ 无法 ping 通服务器: $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
   script:
@@ -135,6 +135,7 @@ deploy-semi-auto:
       $user = $env:SERVER_USER
       $deployPath = $env:DEPLOY_PATH
       $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+      $sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa"
       
       # 参数校验
       if ([string]::IsNullOrWhiteSpace($server) -or [string]::IsNullOrWhiteSpace($user) -or [string]::IsNullOrWhiteSpace($deployPath)) {
@@ -142,40 +143,36 @@ deploy-semi-auto:
         exit 1
       }
       
-      Write-Host "服务器: $user@$server"
-      Write-Host "路径: $deployPath"
-      Write-Host "时间戳: $timestamp"
+      Write-Host "服务器: ${user}@${server}"
+      Write-Host "路径: ${deployPath}"
+      Write-Host "时间戳: ${timestamp}"
       Write-Host ""
       
-      $sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa"
-      $hasSshKey = Test-Path $sshKeyPath
-      
-      if ($hasSshKey) {
-        Write-Host "🔐 检测到 SSH 密钥，可以尝试自动上传" -ForegroundColor Green
-        Write-Host ""
+      if (Test-Path $sshKeyPath) {
+        Write-Host "🔐 检测到 SSH 密钥，开始自动部署..." -ForegroundColor Green
         Write-Host "💡 手动作业已触发，自动继续部署..." -ForegroundColor Green
         
         # 1. 备份
         Write-Host "`n1. 备份现有代码..." -ForegroundColor Yellow
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，跳过备份'"
+        ssh -i "$sshKeyPath" -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，跳过备份'"
         
         # 2. 上传后端
         if (Test-Path "back") {
           Write-Host "`n2. 上传后端代码..." -ForegroundColor Yellow
-          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL back/* "${user}@${server}:${deployPath}/backend/"
+          scp -i "$sshKeyPath" -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL back/* "${user}@${server}:${deployPath}/backend/"
           Write-Host "✅ 后端上传完成" -ForegroundColor Green
         }
         
         # 3. 上传前端
         if (Test-Path "front") {
           Write-Host "`n3. 上传前端代码..." -ForegroundColor Yellow
-          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL front/* "${user}@${server}:${deployPath}/frontend/"
+          scp -i "$sshKeyPath" -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL front/* "${user}@${server}:${deployPath}/frontend/"
           Write-Host "✅ 前端上传完成" -ForegroundColor Green
         }
         
-        # 4. 安装依赖并重启
+        # 4. 安装依赖并重启服务
         Write-Host "`n4. 安装依赖并重启服务..." -ForegroundColor Yellow
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}/backend' && npm install --production && pm2 restart all"
+        ssh -i "$sshKeyPath" -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}/backend' && npm install --production && pm2 restart all"
         
         Write-Host "`n✅ 部署完成！" -ForegroundColor Green
         Write-Host "🌍 访问地址: http://${server}"
@@ -185,16 +182,16 @@ deploy-semi-auto:
         Write-Host "`n🔧 手动部署命令：" -ForegroundColor Cyan
         Write-Host "================================="
         Write-Host "# 备份"
-        Write-Host "ssh ${user}@${server} 'cd ${deployPath} && tar -czf backup_${timestamp}.tar.gz backend frontend'"
+        Write-Host "ssh -i ~/.ssh/id_rsa ${user}@${server} 'cd ${deployPath} && tar -czf backup_${timestamp}.tar.gz backend frontend'"
         Write-Host ""
         Write-Host "# 上传后端"
-        Write-Host "scp -r back/* ${user}@${server}:${deployPath}/backend/"
+        Write-Host "scp -i ~/.ssh/id_rsa -r back/* ${user}@${server}:${deployPath}/backend/"
         Write-Host ""
         Write-Host "# 上传前端"
-        Write-Host "scp -r front/* ${user}@${server}:${deployPath}/frontend/"
+        Write-Host "scp -i ~/.ssh/id_rsa -r front/* ${user}@${server}:${deployPath}/frontend/"
         Write-Host ""
         Write-Host "# 安装依赖并重启"
-        Write-Host "ssh ${user}@${server} 'cd ${deployPath}/backend && npm install --production && pm2 restart all'"
+        Write-Host "ssh -i ~/.ssh/id_rsa ${user}@${server} 'cd ${deployPath}/backend && npm install --production && pm2 restart all'"
         Write-Host "================================="
       }
   tags:
