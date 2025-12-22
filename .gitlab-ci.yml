@@ -208,63 +208,52 @@ deploy-auto:
     - |
       Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
       
-      # 调试：检查私钥开头（确保是内容，不是路径）
+      # 调试：检查私钥开头
       if ($env:SSH_PRIVATE_KEY) {
         $preview = if ($env:SSH_PRIVATE_KEY.Length -gt 50) { $env:SSH_PRIVATE_KEY.Substring(0, 50) } else { $env:SSH_PRIVATE_KEY }
         Write-Host "DEBUG: 私钥前50字符: $preview" -ForegroundColor Magenta
       }
       
-      # 使用系统 TEMP 目录（避免中文用户名或权限问题）
+      # 使用系统 TEMP 目录（最安全）
       $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
       
-      # 检查必要环境变量
-      if ([string]::IsNullOrWhiteSpace($env:SERVER_IP) -or 
-          [string]::IsNullOrWhiteSpace($env:SERVER_USER) -or 
-          [string]::IsNullOrWhiteSpace($env:DEPLOY_PATH) -or 
-          [string]::IsNullOrWhiteSpace($env:SSH_PRIVATE_KEY)) {
-        Write-Host "❌ 缺少必要的环境变量" -ForegroundColor Red
-        Write-Host "请确保设置了: SERVER_IP, SERVER_USER, DEPLOY_PATH, SSH_PRIVATE_KEY" -ForegroundColor Yellow
+      # 检查必要环境变量（提前退出，避免后续空值）
+      $requiredVars = @("SERVER_IP", "SERVER_USER", "DEPLOY_PATH", "SSH_PRIVATE_KEY")
+      $missingVars = @()
+      foreach ($var in $requiredVars) {
+        if ([string]::IsNullOrWhiteSpace((Get-Item "env:$var").Value)) {
+          $missingVars += $var
+        }
+      }
+      if ($missingVars.Count -gt 0) {
+        Write-Host "❌ 缺少以下环境变量: $($missingVars -join ', ')" -ForegroundColor Red
+        Write-Host "请在 GitLab 项目 -> Settings -> CI/CD -> Variables 中设置它们" -ForegroundColor Yellow
         exit 1
       }
       
-      # ✅ 关键修复：以 UTF-8 无 BOM 写入私钥（解决 OpenSSH 无法读取问题）
+      # ✅ 写入私钥（UTF-8 无 BOM）
       Write-Host "配置 SSH 私钥到临时路径: $sshKeyPath" -ForegroundColor Yellow
       $bytes = [System.Text.Encoding]::UTF8.GetBytes($env:SSH_PRIVATE_KEY)
       [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
-      # 设置文件权限：仅当前用户可读，移除其他所有用户（尤其是 BUILTIN\Users）
-      Write-Host "🔒 严格限制私钥文件权限..." -ForegroundColor Yellow
-      # 获取当前用户（格式如 DESKTOP-DHMBBFK\runner 或 NT AUTHORITY\SYSTEM）
-      $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-
-      # 先重置权限（可选，但更干净）
-      icacls "$sshKeyPath" /reset 2>$null | Out-Null
-
-      # 移除所有继承权限
-      icacls "$sshKeyPath" /inheritance:r 2>$null | Out-Null
-
-      # 仅授予当前用户“读取”权限
-      icacls "$sshKeyPath" /grant:r "$currentUserName:(R)" 2>$null | Out-Null
-
-      # 验证权限（可选调试）
-      # $aclCheck = icacls "$sshKeyPath"
-      # Write-Host "ACL: $aclCheck" -ForegroundColor Gray
-
-      Write-Host "✅ 私钥权限已锁定（仅 $currentUserName 可读）" -ForegroundColor Green
-      Write-Host "✅ SSH 私钥已保存（UTF-8 无 BOM）" -ForegroundColor Green
       
-      # 验证私钥格式（使用 UTF8 编码读取）
+      # ✅ 严格限制文件权限（关键！使用 ${} 避免解析错误）
+      Write-Host "🔒 严格限制私钥文件权限..." -ForegroundColor Yellow
+      $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+      # 移除继承并仅授权当前用户读取
+      icacls "$sshKeyPath" /inheritance:r /grant:r "${currentUserName}:(R)" /Q 2>$null | Out-Null
+      Write-Host "✅ 私钥权限已锁定（仅 ${currentUserName} 可读）" -ForegroundColor Green
+      
+      # 验证私钥格式
       $firstLine = Get-Content -Path $sshKeyPath -First 1 -Encoding UTF8
       if ($firstLine -notmatch "-----BEGIN") {
-        Write-Host "⚠️  SSH 密钥格式可能有问题" -ForegroundColor Yellow
-        Write-Host "第一行: $firstLine" -ForegroundColor Gray
+        Write-Host "⚠️  SSH 密钥格式异常，第一行: $firstLine" -ForegroundColor Yellow
       }
       
-      # 测试服务器连通性
-      Write-Host "测试服务器连通性..." -ForegroundColor Yellow
+      # 测试服务器连通性（此时 SERVER_IP 已确认非空）
+      Write-Host "测试服务器连通性 ($($env:SERVER_IP))..." -ForegroundColor Yellow
       $pingSuccess = $false
-      $maxPingAttempts = 3
-      for ($i = 1; $i -le $maxPingAttempts; $i++) {
-        Write-Host "尝试 $i/$maxPingAttempts..."
+      for ($i = 1; $i -le 3; $i++) {
+        Write-Host "尝试 $i/3..."
         if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet -ErrorAction SilentlyContinue) {
           $pingSuccess = $true
           Write-Host "✅ 服务器可以连通" -ForegroundColor Green
@@ -273,21 +262,19 @@ deploy-auto:
         Start-Sleep -Seconds 2
       }
       if (-not $pingSuccess) {
-        Write-Host "❌ 无法连接服务器: $($env:SERVER_IP)" -ForegroundColor Red
+        Write-Host "❌ 无法 ping 通服务器: $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
       
       # 测试 SSH 连接
       Write-Host "测试 SSH 连接..." -ForegroundColor Yellow
-      # 注意：路径用双引号包裹，防止空格（虽然 TEMP 通常无空格）
-      $sshTestCmd = "ssh -i `"$sshKeyPath`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"$($env:SERVER_USER)@$($env:SERVER_IP)`" `"echo SSH_CONNECT_TEST_OK && exit 0`""
-      $sshOutput = cmd /c "$sshTestCmd"
+      $sshCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo SSH_CONNECT_TEST_OK && exit 0`""
+      $sshOutput = cmd /c "$sshCmd"
       if ($sshOutput -match "SSH_CONNECT_TEST_OK") {
         Write-Host "✅ SSH 连接测试成功" -ForegroundColor Green
-        # 将路径存入环境变量供 script 使用
         [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath)
       } else {
-        Write-Host "❌ SSH 连接测试失败" -ForegroundColor Red
+        Write-Host "❌ SSH 连接失败" -ForegroundColor Red
         Write-Host "输出: $sshOutput" -ForegroundColor Gray
         exit 1
       }
@@ -301,11 +288,10 @@ deploy-auto:
       $user = $env:SERVER_USER
       $deployPath = $env:DEPLOY_PATH
       $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-      # 从环境变量获取密钥路径
       $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
       
       if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
-        Write-Host "❌ SSH 密钥路径未设置或文件不存在" -ForegroundColor Red
+        Write-Host "❌ SSH 密钥路径无效" -ForegroundColor Red
         exit 1
       }
       
@@ -313,113 +299,50 @@ deploy-auto:
       Write-Host "  - 服务器: ${user}@${server}"
       Write-Host "  - 部署路径: ${deployPath}"
       Write-Host "  - 时间戳: ${timestamp}"
-      Write-Host "  - 提交: $env:CI_COMMIT_SHORT_SHA"
-      Write-Host "  - 分支: $env:CI_COMMIT_REF_NAME"
       Write-Host ""
       
-      # 1. 备份服务器代码
-      Write-Host "1️⃣ 备份服务器现有代码..." -ForegroundColor Yellow
-      $backupCmd = "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，无需备份'"
-      $backupResult = cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$backupCmd`"
-      Write-Host "备份结果: $backupResult" -ForegroundColor Gray
+      # 1. 备份
+      Write-Host "1️⃣ 备份服务器代码..." -ForegroundColor Yellow
+      $backupCmd = "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署'"
+      cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$backupCmd`" | Out-Null
       Write-Host "✅ 备份完成" -ForegroundColor Green
       
-      # 2. 上传后端代码
+      # 2. 上传后端
       if (Test-Path "back") {
         Write-Host "`n2️⃣ 上传后端代码..." -ForegroundColor Yellow
-        $backFileCount = (Get-ChildItem -Recurse -Path "back" | Measure-Object).Count
-        Write-Host "发现 $backFileCount 个文件需要上传" -ForegroundColor Gray
-        
-        $mkdirBackend = "mkdir -p '${deployPath}/backend'"
-        cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$mkdirBackend`" | Out-Null
-        
-        $uploadBackResult = cmd /c "scp -i `"$sshKeyPath`" -r -o BatchMode=yes back/* `${user}@${server}:${deployPath}/backend/`"
-        if ($LASTEXITCODE -eq 0) {
-          Write-Host "✅ 后端代码上传完成" -ForegroundColor Green
-        } else {
-          Write-Host "❌ 后端代码上传失败: $uploadBackResult" -ForegroundColor Red
-        }
-      } else {
-        Write-Host "⚠️  back目录不存在，跳过后端部署" -ForegroundColor Yellow
+        cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/backend`"" | Out-Null
+        cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes back/* `${user}@${server}:${deployPath}/backend/`"
+        Write-Host "✅ 后端上传完成" -ForegroundColor Green
       }
       
-      # 3. 上传前端代码
+      # 3. 上传前端
       if (Test-Path "front") {
         Write-Host "`n3️⃣ 上传前端代码..." -ForegroundColor Yellow
-        $frontFileCount = (Get-ChildItem -Recurse -Path "front" | Measure-Object).Count
-        Write-Host "发现 $frontFileCount 个文件需要上传" -ForegroundColor Gray
-        
-        $mkdirFrontend = "mkdir -p '${deployPath}/frontend'"
-        cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$mkdirFrontend`" | Out-Null
-        
-        $uploadFrontResult = cmd /c "scp -i `"$sshKeyPath`" -r -o BatchMode=yes front/* `${user}@${server}:${deployPath}/frontend/`"
-        if ($LASTEXITCODE -eq 0) {
-          Write-Host "✅ 前端代码上传完成" -ForegroundColor Green
-        } else {
-          Write-Host "❌ 前端代码上传失败: $uploadFrontResult" -ForegroundColor Red
-        }
-      } else {
-        Write-Host "⚠️  front目录不存在，跳过前端部署" -ForegroundColor Yellow
+        cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/frontend`"" | Out-Null
+        cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes front/* `${user}@${server}:${deployPath}/frontend/`"
+        Write-Host "✅ 前端上传完成" -ForegroundColor Green
       }
       
-      # 4. 安装依赖
-      Write-Host "`n4️⃣ 安装后端依赖..." -ForegroundColor Yellow
-      $installCmd = "cd '${deployPath}/backend' && npm install --production"
-      $installResult = cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$installCmd`"
-      if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ 依赖安装完成" -ForegroundColor Green
-      } else {
-        Write-Host "❌ 依赖安装失败: $installResult" -ForegroundColor Red
-      }
-      
-      # 5. 重启服务
-      Write-Host "`n5️⃣ 重启 PM2 服务..." -ForegroundColor Yellow
-      $restartCmd = "cd '${deployPath}/backend' && pm2 restart all"
-      $restartResult = cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$restartCmd`"
-      if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ 服务重启成功" -ForegroundColor Green
-      } else {
-        Write-Host "⚠️  PM2重启失败，尝试启动新进程..." -ForegroundColor Yellow
-        $startCmd = "cd '${deployPath}/backend' && pm2 start npm --name 'backend' -- run start"
-        $startResult = cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$startCmd`"
-        Write-Host "启动结果: $startResult" -ForegroundColor Gray
-      }
-      
-      # 6. 健康检查
-      Write-Host "`n6️⃣ 健康检查..." -ForegroundColor Yellow
-      Start-Sleep -Seconds 5
-      $healthCheck = @"
-        echo "检查 Node.js 进程:"
-        ps aux | grep node | grep -v grep
-        echo ""
-        echo "检查 PM2 状态:"
-        pm2 list
-        echo ""
-        echo "检查端口 3000:"
-        netstat -tlnp | grep :3000 || echo "端口 3000 未监听"
+      # 4. 安装依赖 & 重启
+      Write-Host "`n4️⃣ 安装依赖并重启服务..." -ForegroundColor Yellow
+      $restartScript = @"
+        cd '${deployPath}/backend'
+        npm install --production
+        pm2 restart all || pm2 start npm --name 'backend' -- run start
       "@
-      $healthResult = cmd /c "ssh -i `"$sshKeyPath`" -o BatchMode=yes `${user}@${server}` `$healthCheck`"
-      Write-Host "健康检查结果:" -ForegroundColor Cyan
-      $healthResult
+      cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `$restartScript`" | Out-Null
+      Write-Host "✅ 服务已更新" -ForegroundColor Green
       
-      Write-Host "`n🎉 全自动部署完成！" -ForegroundColor Green
-      Write-Host "================================="
-      Write-Host "🌍 网站地址: http://${server}:3000"
-      Write-Host "📅 部署时间: $(Get-Date)"
-      Write-Host "🔧 提交哈希: $env:CI_COMMIT_SHORT_SHA"
-      Write-Host "🌿 分支: $env:CI_COMMIT_REF_NAME"
-      Write-Host "================================="
-      
-      Write-Host "`n📢 部署完成通知已发送" -ForegroundColor Gray
+      Write-Host "`n🎉 部署完成！访问: http://${server}:3000" -ForegroundColor Green
   
   after_script:
     - |
       Write-Host "🧹 清理临时文件..." -ForegroundColor Gray
       $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
       if (Test-Path $sshKeyPath) {
-        # 先取消只读属性再删除
-        attrib -r $sshKeyPath 2>$null | Out-Null
-        Remove-Item $sshKeyPath -Force -ErrorAction SilentlyContinue
+        # 先取消只读（如果设了）
+        attrib -r "$sshKeyPath" 2>$null | Out-Null
+        Remove-Item "$sshKeyPath" -Force
         Write-Host "✅ 已清理 SSH 私钥" -ForegroundColor Green
       }
   
