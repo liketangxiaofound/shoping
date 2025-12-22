@@ -124,7 +124,7 @@ deploy-semi-auto:
         Write-Host "❌ 无法 ping 通服务器: $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
-      script:
+  script:
     - |
       Write-Host "🚀 半自动部署到阿里云" -ForegroundColor Cyan
       Write-Host "================================="
