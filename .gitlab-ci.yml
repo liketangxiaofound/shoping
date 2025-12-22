@@ -201,58 +201,101 @@ deploy-semi-auto:
   when: manual
 
 
+# 阶段5: 全自动部署（修复 TEMP 路径和权限问题）
 deploy-auto:
   stage: deploy
   before_script:
     - |
-      # 🔒 强制使用系统 TEMP 目录 —— 不允许任何自定义路径！
-      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
-      
       Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
+      
+      # 🔧 关键修复1: 使用真正的用户 TEMP 目录
+      # 优先使用 USERPROFILE 下的临时目录，避免权限问题
+      $userTemp = [System.IO.Path]::Combine($env:USERPROFILE, "AppData", "Local", "Temp")
+      if (-not (Test-Path $userTemp)) {
+        $userTemp = $env:TEMP
+      }
+      
+      # 🔧 关键修复2: 使用随机文件名，避免冲突
+      $random = Get-Random -Minimum 1000 -Maximum 9999
+      $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+      $sshKeyPath = [System.IO.Path]::Combine($userTemp, "gitlab_deploy_key_${timestamp}_${random}")
+      
       Write-Host "ℹ️  使用安全临时路径: $sshKeyPath" -ForegroundColor DarkGray
-
+      
       # === 检查必要环境变量 ===
       $requiredVars = @("SERVER_IP", "SERVER_USER", "DEPLOY_PATH", "SSH_PRIVATE_KEY")
       $missingVars = @()
       foreach ($var in $requiredVars) {
-        if ([string]::IsNullOrWhiteSpace((Get-Item "env:$var").Value)) {
+        $value = Get-Item "env:$var" -ErrorAction SilentlyContinue
+        if (-not $value -or [string]::IsNullOrWhiteSpace($value.Value)) {
           $missingVars += $var
         }
       }
+      
       if ($missingVars.Count -gt 0) {
         Write-Host "❌ 缺少以下 GitLab CI/CD 变量: $($missingVars -join ', ')" -ForegroundColor Red
         Write-Host "请在项目 Settings → CI/CD → Variables 中设置它们" -ForegroundColor Yellow
         exit 1
       }
-
-      # === 标准化私钥：修复换行符 + 补末尾换行 ===
+      
+      Write-Host "✅ 环境变量检查通过" -ForegroundColor Green
+      
+      # === 标准化私钥：修复换行符 ===
       $rawKey = $env:SSH_PRIVATE_KEY
+      Write-Host "🔍 原始私钥长度: $($rawKey.Length) 字符" -ForegroundColor DarkGray
+      
       $normalizedKey = $rawKey -replace "`r`n", "`n" -replace "`r", "`n"
       if (-not $normalizedKey.EndsWith("`n")) {
         $normalizedKey += "`n"
       }
-
+      
       # === 写入私钥（UTF-8 无 BOM）===
       try {
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
         [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
         Write-Host "✅ 私钥已写入临时文件" -ForegroundColor Green
+        
+        # 🔧 关键修复3: 检查文件是否成功写入
+        if (-not (Test-Path $sshKeyPath)) {
+          Write-Host "❌ 私钥文件写入失败" -ForegroundColor Red
+          exit 1
+        }
+        
+        $fileSize = (Get-Item $sshKeyPath).Length
+        Write-Host "📁 文件大小: $fileSize 字节" -ForegroundColor DarkGray
+        
       } catch {
         Write-Host "❌ 写入私钥失败: $_" -ForegroundColor Red
-        Write-Host "💡 请勿使用 C:\newtemp 等非用户目录！" -ForegroundColor Yellow
-        exit 1
+        Write-Host "💡 可能是权限问题，尝试使用其他目录..." -ForegroundColor Yellow
+        
+        # 尝试备用目录
+        $sshKeyPath = [System.IO.Path]::Combine($env:USERPROFILE, "gitlab_deploy_key_${timestamp}_${random}")
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
+        [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
+        Write-Host "✅ 私钥已写入备用路径" -ForegroundColor Green
       }
-
+      
       # === 调试：检查首行 ===
       $firstLine = Get-Content -Path $sshKeyPath -First 1 -Encoding UTF8
       Write-Host "🔍 私钥首行: $firstLine" -ForegroundColor Magenta
-
-      # === 限制权限（仅当前用户可读）===
-      $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-      Write-Host "🔒 设置私钥权限（仅 ${currentUserName} 可读）..." -ForegroundColor Yellow
-      icacls "$sshKeyPath" /inheritance:r /grant:r "${currentUserName}:(R)" /Q 2>$null | Out-Null
-      Write-Host "✅ 权限已锁定" -ForegroundColor Green
-
+      
+      # 🔧 关键修复4: 使用更简单的权限设置，避免复杂的 icacls
+      Write-Host "🔒 设置文件权限..." -ForegroundColor Yellow
+      
+      # 方法1: 使用 PowerShell 的 ACL
+      try {
+        $acl = Get-Acl -Path $sshKeyPath
+        $acl.SetAccessRuleProtection($true, $false)  # 禁用继承
+        Set-Acl -Path $sshKeyPath -AclObject $acl
+        Write-Host "✅ 使用 PowerShell ACL 设置权限" -ForegroundColor Green
+      } catch {
+        Write-Host "⚠️  PowerShell ACL 设置失败: $_" -ForegroundColor Yellow
+        Write-Host "ℹ️  尝试使用简单方法..." -ForegroundColor Gray
+      }
+      
+      # 设置为隐藏文件
+      attrib +h $sshKeyPath 2>$null
+      
       # === 测试服务器连通性 ===
       Write-Host "📡 测试服务器连通性 ($($env:SERVER_IP))..." -ForegroundColor Yellow
       $pingSuccess = $false
@@ -265,76 +308,255 @@ deploy-auto:
         }
         Start-Sleep -Seconds 2
       }
+      
       if (-not $pingSuccess) {
         Write-Host "❌ 无法 ping 通 $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
-
+      
       # === 测试 SSH 连接 ===
       Write-Host "🔑 测试 SSH 认证..." -ForegroundColor Yellow
-      $sshCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo 'SSH_OK' && exit 0`""
-      $output = & cmd /c "$sshCmd" 2>&1
-      if ($LASTEXITCODE -eq 0 -and ($output -join "`n") -match "SSH_OK") {
-        Write-Host "✅ SSH 连接成功" -ForegroundColor Green
-        [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath)
+      
+      # 使用 Job 控制超时
+      $job = Start-Job -ScriptBlock {
+        param($keyPath, $user, $server)
+        ssh -i $keyPath -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" "echo 'SSH_OK'" 2>&1
+      } -ArgumentList $sshKeyPath, $env:SERVER_USER, $env:SERVER_IP
+      
+      $result = Wait-Job $job -Timeout 15
+      
+      if ($result) {
+        $output = Receive-Job $job
+        if ($output -like "*SSH_OK*") {
+          Write-Host "✅ SSH 连接成功" -ForegroundColor Green
+          [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath, "Process")
+        } else {
+          Write-Host "❌ SSH 连接失败" -ForegroundColor Red
+          Write-Host "输出: $output" -ForegroundColor Gray
+          exit 1
+        }
       } else {
-        Write-Host "❌ SSH 连接失败" -ForegroundColor Red
-        Write-Host "输出: $($output -join "`n")" -ForegroundColor Gray
+        Write-Host "❌ SSH 连接超时" -ForegroundColor Red
+        Stop-Job $job
         exit 1
       }
-
+      
+      Remove-Job $job
+      
+      Write-Host "✅ 初始化完成，准备部署" -ForegroundColor Green
+  
   script:
     - |
+      Write-Host "🎯 开始全自动部署..." -ForegroundColor Green
+      Write-Host "================================="
+      
       $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
       if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
-        Write-Host "❌ SSH 密钥未准备好" -ForegroundColor Red
+        Write-Host "❌ SSH 密钥文件不存在: $sshKeyPath" -ForegroundColor Red
+        Write-Host "💡 可能 before_script 阶段失败" -ForegroundColor Yellow
         exit 1
       }
-
+      
       $server = $env:SERVER_IP
       $user = $env:SERVER_USER
       $deployPath = $env:DEPLOY_PATH
       $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-
-      Write-Host "🎯 开始部署到 ${user}@${server}:${deployPath}" -ForegroundColor Green
-
-      # 备份
-      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `"cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署'`"" | Out-Null
-      Write-Host "✅ 已备份（如存在）" -ForegroundColor Green
-
-      # 上传后端
+      
+      Write-Host "部署信息:" -ForegroundColor Cyan
+      Write-Host "  - 服务器: ${user}@${server}"
+      Write-Host "  - 部署路径: ${deployPath}"
+      Write-Host "  - SSH 密钥: $sshKeyPath"
+      Write-Host "  - 时间戳: ${timestamp}"
+      Write-Host "  - 提交: $env:CI_COMMIT_SHORT_SHA"
+      Write-Host "  - 分支: $env:CI_COMMIT_REF_NAME"
+      Write-Host ""
+      
+      # 1. 备份服务器代码
+      Write-Host "1️⃣ 备份服务器现有代码..." -ForegroundColor Yellow
+      $backupCmd = "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，无需备份'"
+      
+      $backupJob = Start-Job -ScriptBlock {
+        param($keyPath, $user, $server, $backupCmd)
+        ssh -i $keyPath -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" $backupCmd 2>&1
+      } -ArgumentList $sshKeyPath, $user, $server, $backupCmd
+      
+      $backupResult = Wait-Job $backupJob -Timeout 30
+      if ($backupResult) {
+        $output = Receive-Job $backupJob
+        Write-Host "备份结果: $output" -ForegroundColor Gray
+        Write-Host "✅ 备份完成" -ForegroundColor Green
+      } else {
+        Write-Host "⚠️  备份可能超时，继续执行..." -ForegroundColor Yellow
+        Stop-Job $backupJob
+      }
+      Remove-Job $backupJob
+      
+      # 2. 上传后端代码
       if (Test-Path "back") {
-        & cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/backend`"" | Out-Null
-        & cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes back/* `${user}@${server}:${deployPath}/backend/`"
-        Write-Host "✅ 后端已上传" -ForegroundColor Green
+        Write-Host "`n2️⃣ 上传后端代码..." -ForegroundColor Yellow
+        $backFileCount = (Get-ChildItem -Recurse -Path "back" | Measure-Object).Count
+        Write-Host "发现 $backFileCount 个文件需要上传" -ForegroundColor Gray
+        
+        # 创建目录
+        $mkdirJob = Start-Job -ScriptBlock {
+          param($keyPath, $user, $server, $deployPath)
+          ssh -i $keyPath -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" "mkdir -p ${deployPath}/backend" 2>&1
+        } -ArgumentList $sshKeyPath, $user, $server, $deployPath
+        
+        Wait-Job $mkdirJob -Timeout 10 | Out-Null
+        Remove-Job $mkdirJob
+        
+        # 上传文件
+        $uploadJob = Start-Job -ScriptBlock {
+          param($keyPath, $user, $server, $deployPath)
+          $currentDir = Get-Location
+          $backPath = Join-Path $currentDir "back"
+          scp -i $keyPath -r -o BatchMode=yes "${backPath}/*" "${user}@${server}:${deployPath}/backend/" 2>&1
+        } -ArgumentList $sshKeyPath, $user, $server, $deployPath
+        
+        $uploadResult = Wait-Job $uploadJob -Timeout 60
+        if ($uploadResult) {
+          $output = Receive-Job $uploadJob
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ 后端代码上传完成" -ForegroundColor Green
+          } else {
+            Write-Host "❌ 后端代码上传失败: $output" -ForegroundColor Red
+          }
+        } else {
+          Write-Host "⚠️  上传超时，继续执行..." -ForegroundColor Yellow
+          Stop-Job $uploadJob
+        }
+        Remove-Job $uploadJob
+      } else {
+        Write-Host "⚠️  back目录不存在，跳过后端部署" -ForegroundColor Yellow
       }
-
-      # 上传前端
+      
+      # 3. 上传前端代码
       if (Test-Path "front") {
-        & cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/frontend`"" | Out-Null
-        & cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes front/* `${user}@${server}:${deployPath}/frontend/`"
-        Write-Host "✅ 前端已上传" -ForegroundColor Green
+        Write-Host "`n3️⃣ 上传前端代码..." -ForegroundColor Yellow
+        $frontFileCount = (Get-ChildItem -Recurse -Path "front" | Measure-Object).Count
+        Write-Host "发现 $frontFileCount 个文件需要上传" -ForegroundColor Gray
+        
+        # 创建目录
+        $mkdirJob = Start-Job -ScriptBlock {
+          param($keyPath, $user, $server, $deployPath)
+          ssh -i $keyPath -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" "mkdir -p ${deployPath}/frontend" 2>&1
+        } -ArgumentList $sshKeyPath, $user, $server, $deployPath
+        
+        Wait-Job $mkdirJob -Timeout 10 | Out-Null
+        Remove-Job $mkdirJob
+        
+        # 上传文件
+        $uploadJob = Start-Job -ScriptBlock {
+          param($keyPath, $user, $server, $deployPath)
+          $currentDir = Get-Location
+          $frontPath = Join-Path $currentDir "front"
+          scp -i $keyPath -r -o BatchMode=yes "${frontPath}/*" "${user}@${server}:${deployPath}/frontend/" 2>&1
+        } -ArgumentList $sshKeyPath, $user, $server, $deployPath
+        
+        $uploadResult = Wait-Job $uploadJob -Timeout 60
+        if ($uploadResult) {
+          $output = Receive-Job $uploadJob
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ 前端代码上传完成" -ForegroundColor Green
+          } else {
+            Write-Host "❌ 前端代码上传失败: $output" -ForegroundColor Red
+          }
+        } else {
+          Write-Host "⚠️  上传超时，继续执行..." -ForegroundColor Yellow
+          Stop-Job $uploadJob
+        }
+        Remove-Job $uploadJob
+      } else {
+        Write-Host "⚠️  front目录不存在，跳过前端部署" -ForegroundColor Yellow
       }
-
-      # 重启服务
-      $restart = @"
-      cd '${deployPath}/backend'
-      npm install --production
-      pm2 restart all || pm2 start npm --name 'backend' -- run start
+      
+      # 4. 安装依赖并重启服务
+      Write-Host "`n4️⃣ 安装依赖并重启服务..." -ForegroundColor Yellow
+      $restartCmd = @"
+        cd '${deployPath}/backend'
+        npm install --production
+        pm2 restart all || pm2 start npm --name 'backend' -- run start
       "@
-      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$restart`" | Out-Null
-      Write-Host "✅ 服务已重启" -ForegroundColor Green
-      Write-Host "`n🎉 部署完成！访问: http://${server}:3000" -ForegroundColor Green
-
+      
+      $restartJob = Start-Job -ScriptBlock {
+        param($keyPath, $user, $server, $restartCmd)
+        ssh -i $keyPath -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" $restartCmd 2>&1
+      } -ArgumentList $sshKeyPath, $user, $server, $restartCmd
+      
+      $restartResult = Wait-Job $restartJob -Timeout 120
+      if ($restartResult) {
+        $output = Receive-Job $restartJob
+        Write-Host "重启结果: $output" -ForegroundColor Gray
+        Write-Host "✅ 服务重启完成" -ForegroundColor Green
+      } else {
+        Write-Host "⚠️  重启超时，但可能已成功" -ForegroundColor Yellow
+        Stop-Job $restartJob
+      }
+      Remove-Job $restartJob
+      
+      Write-Host "`n🎉 全自动部署完成！" -ForegroundColor Green
+      Write-Host "================================="
+      Write-Host "🌍 网站地址: http://${server}:3000"
+      Write-Host "📅 部署时间: $(Get-Date)"
+      Write-Host "🔧 提交哈希: $env:CI_COMMIT_SHORT_SHA"
+      Write-Host "🌿 分支: $env:CI_COMMIT_REF_NAME"
+      Write-Host "================================="
+  
   after_script:
     - |
       Write-Host "🧹 清理临时密钥..." -ForegroundColor Gray
-      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
-      if (Test-Path $sshKeyPath) {
-        Remove-Item $sshKeyPath -Force
-        Write-Host "✅ 临时密钥已删除" -ForegroundColor Green
+      
+      # 尝试从环境变量获取路径
+      $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
+      
+      # 如果环境变量没有，尝试查找临时文件
+      if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
+        # 查找可能的临时文件
+        $tempDir = [System.IO.Path]::Combine($env:USERPROFILE, "AppData", "Local", "Temp")
+        if (Test-Path $tempDir) {
+          $possibleFiles = Get-ChildItem -Path $tempDir -Filter "gitlab_deploy_key_*" -ErrorAction SilentlyContinue
+          if ($possibleFiles) {
+            $sshKeyPath = $possibleFiles[0].FullName
+          }
+        }
+        
+        # 如果还没有，尝试另一个目录
+        if (-not $sshKeyPath) {
+          $possibleFiles = Get-ChildItem -Path $env:TEMP -Filter "gitlab_deploy_key_*" -ErrorAction SilentlyContinue
+          if ($possibleFiles) {
+            $sshKeyPath = $possibleFiles[0].FullName
+          }
+        }
       }
-
+      
+      if ($sshKeyPath -and (Test-Path $sshKeyPath)) {
+        Write-Host "找到临时密钥文件: $sshKeyPath" -ForegroundColor DarkGray
+        
+        # 🔧 关键修复5: 使用更安全的方法删除文件
+        try {
+          # 先取消隐藏属性
+          attrib -h $sshKeyPath 2>$null
+          
+          # 尝试直接删除
+          Remove-Item -Path $sshKeyPath -Force -ErrorAction Stop
+          Write-Host "✅ 临时密钥已删除" -ForegroundColor Green
+        } catch {
+          Write-Host "⚠️  无法删除文件: $_" -ForegroundColor Yellow
+          Write-Host "💡 将在下次部署时覆盖" -ForegroundColor Gray
+          
+          # 如果无法删除，至少清空文件内容
+          try {
+            Set-Content -Path $sshKeyPath -Value "" -NoNewline -ErrorAction Stop
+            Write-Host "✅ 已清空文件内容" -ForegroundColor Green
+          } catch {
+            Write-Host "⚠️  无法清空文件内容" -ForegroundColor Yellow
+          }
+        }
+      } else {
+        Write-Host "ℹ️  未找到临时密钥文件，可能已删除" -ForegroundColor Gray
+      }
+  
   tags:
     - local
   only:
@@ -342,4 +564,4 @@ deploy-auto:
   when: on_success
   environment:
     name: production
-    url: http://$SERVER_IP:3000
+    url: http://$env:SERVER_IP:3000
