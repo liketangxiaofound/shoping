@@ -111,7 +111,7 @@ deploy-semi-auto:
     # 测试 SSH 连接
     - echo "🔌 测试服务器连接..."
     - $pingResult = ping -n 1 ${SERVER_IP}
-    if ($LASTEXITCODE -eq 0) {
+     if ($LASTEXITCODE -eq 0) {
       echo "✅ 服务器可以连通"
     } else {
       echo "❌ 无法连接服务器"
