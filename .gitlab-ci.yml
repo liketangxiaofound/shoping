@@ -231,8 +231,25 @@ deploy-auto:
       Write-Host "配置 SSH 私钥到临时路径: $sshKeyPath" -ForegroundColor Yellow
       $bytes = [System.Text.Encoding]::UTF8.GetBytes($env:SSH_PRIVATE_KEY)
       [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
-      # 设置隐藏 + 只读（增强安全性）
-      attrib +h +r $sshKeyPath 2>$null | Out-Null
+      # 设置文件权限：仅当前用户可读，移除其他所有用户（尤其是 BUILTIN\Users）
+      Write-Host "🔒 严格限制私钥文件权限..." -ForegroundColor Yellow
+      # 获取当前用户（格式如 DESKTOP-DHMBBFK\runner 或 NT AUTHORITY\SYSTEM）
+      $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+      # 先重置权限（可选，但更干净）
+      icacls "$sshKeyPath" /reset 2>$null | Out-Null
+
+      # 移除所有继承权限
+      icacls "$sshKeyPath" /inheritance:r 2>$null | Out-Null
+
+      # 仅授予当前用户“读取”权限
+      icacls "$sshKeyPath" /grant:r "$currentUserName:(R)" 2>$null | Out-Null
+
+      # 验证权限（可选调试）
+      # $aclCheck = icacls "$sshKeyPath"
+      # Write-Host "ACL: $aclCheck" -ForegroundColor Gray
+
+      Write-Host "✅ 私钥权限已锁定（仅 $currentUserName 可读）" -ForegroundColor Green
       Write-Host "✅ SSH 私钥已保存（UTF-8 无 BOM）" -ForegroundColor Green
       
       # 验证私钥格式（使用 UTF8 编码读取）
