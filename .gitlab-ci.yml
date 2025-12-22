@@ -221,26 +221,26 @@ deploy-auto:
         exit 1
       }
 
-      # === 使用系统 TEMP 目录（安全且权限干净）===
+      # ✅ 关键修复：使用系统 TEMP 目录（不再用 C:\newtemp！）
       $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
       Write-Host "配置 SSH 私钥到临时路径: $sshKeyPath" -ForegroundColor Yellow
 
-      # === 标准化私钥格式：统一为 Unix 换行 (\n)，并确保末尾有换行 ===
+      # === 标准化私钥格式 ===
       $rawKey = $env:SSH_PRIVATE_KEY
       $normalizedKey = $rawKey -replace "`r`n", "`n" -replace "`r", "`n"
       if (-not $normalizedKey.EndsWith("`n")) {
         $normalizedKey += "`n"
       }
 
-      # 写入 UTF-8 无 BOM
+      # 写入文件（现在一定有权限！）
       $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
       [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
 
-      # === 调试：检查首行 ===
+      # === 调试输出 ===
       $firstLine = Get-Content -Path $sshKeyPath -First 1 -Encoding UTF8
       Write-Host "DEBUG: 私钥首行: $firstLine" -ForegroundColor Magenta
 
-      # === 严格限制权限（仅当前用户可读）===
+      # === 设置严格权限 ===
       $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
       Write-Host "🔒 限制私钥权限（仅 ${currentUserName} 可读）..." -ForegroundColor Yellow
       icacls "$sshKeyPath" /inheritance:r /grant:r "${currentUserName}:(R)" /Q 2>$null | Out-Null
@@ -265,15 +265,14 @@ deploy-auto:
 
       # === 测试 SSH 连接 ===
       Write-Host "🔑 测试 SSH 连接..." -ForegroundColor Yellow
-      $sshCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo 'SSH_OK' && exit 0`""
-      $sshOutput = & cmd /c "$sshCmd" 2>&1
-      if ($LASTEXITCODE -eq 0 -and $sshOutput -match "SSH_OK") {
+      $sshTestCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo 'SSH_OK' && exit 0`""
+      $result = & cmd /c "$sshTestCmd" 2>&1
+      if ($LASTEXITCODE -eq 0 -and ($result -join "`n") -match "SSH_OK") {
         Write-Host "✅ SSH 连接成功" -ForegroundColor Green
         [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath)
       } else {
         Write-Host "❌ SSH 连接失败" -ForegroundColor Red
-        Write-Host "输出: $sshOutput" -ForegroundColor Gray
-        Write-Host "常见原因：公钥未添加到服务器 ~/.ssh/authorized_keys，或私钥格式错误" -ForegroundColor Yellow
+        Write-Host "输出: $($result -join "`n")" -ForegroundColor Gray
         exit 1
       }
 
@@ -324,11 +323,11 @@ deploy-auto:
       # 重启服务
       Write-Host "`n4️⃣ 重启服务..." -ForegroundColor Yellow
       $restartScript = @"
-        cd '${deployPath}/backend'
-        npm install --production
-        pm2 restart all || pm2 start npm --name 'backend' -- run start
+      cd '${deployPath}/backend'
+      npm install --production
+      pm2 restart all || pm2 start npm --name 'backend' -- run start
       "@
-      & cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `$restartScript`" | Out-Null
+      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$restartScript`" | Out-Null
       Write-Host "✅ 服务已更新" -ForegroundColor Green
 
       Write-Host "`n🎉 部署成功！访问: http://${server}:3000" -ForegroundColor Green
