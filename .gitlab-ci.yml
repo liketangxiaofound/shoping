@@ -208,6 +208,7 @@ deploy-auto:
     - |
       Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
       
+      Write-Host "DEBUG: 私钥前50字符: $($env:SSH_PRIVATE_KEY.Substring(0, [Math]::Min(50, $env:SSH_PRIVATE_KEY.Length)))" -ForegroundColor Magenta
       # 创建 .ssh 目录
       $sshDir = "$env:USERPROFILE\.ssh"
       if (-not (Test-Path $sshDir)) {
