@@ -208,15 +208,16 @@ deploy-auto:
     - |
       Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
       
-      Write-Host "DEBUG: 私钥前50字符: $($env:SSH_PRIVATE_KEY.Substring(0, [Math]::Min(50, $env:SSH_PRIVATE_KEY.Length)))" -ForegroundColor Magenta
-      # 创建 .ssh 目录
-      $sshDir = "$env:USERPROFILE\.ssh"
-      if (-not (Test-Path $sshDir)) {
-        New-Item -ItemType Directory -Path $sshDir | Out-Null
-        Write-Host "✅ 创建 .ssh 目录" -ForegroundColor Green
+      # 调试：检查私钥开头（确保是内容，不是路径）
+      if ($env:SSH_PRIVATE_KEY) {
+        $preview = if ($env:SSH_PRIVATE_KEY.Length -gt 50) { $env:SSH_PRIVATE_KEY.Substring(0, 50) } else { $env:SSH_PRIVATE_KEY }
+        Write-Host "DEBUG: 私钥前50字符: $preview" -ForegroundColor Magenta
       }
       
-      # 检查必要的环境变量
+      # 使用 TEMP 目录避免中文用户名路径问题（关键修复！）
+      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
+      
+      # 检查必要环境变量
       if ([string]::IsNullOrWhiteSpace($env:SERVER_IP) -or 
           [string]::IsNullOrWhiteSpace($env:SERVER_USER) -or 
           [string]::IsNullOrWhiteSpace($env:DEPLOY_PATH) -or 
@@ -226,22 +227,18 @@ deploy-auto:
         exit 1
       }
       
-      # 配置 SSH 私钥
-      Write-Host "配置 SSH 私钥..." -ForegroundColor Yellow
-      $keyFile = "$sshDir\id_rsa"
+      # 写入私钥到临时路径
+      Write-Host "配置 SSH 私钥到临时路径: $sshKeyPath" -ForegroundColor Yellow
+      Set-Content -Path $sshKeyPath -Value $env:SSH_PRIVATE_KEY -NoNewline
+      # 设置文件权限（Windows 下虽无 chmod，但至少隐藏）
+      attrib +h $sshKeyPath 2>$null | Out-Null
+      Write-Host "✅ SSH 私钥已保存" -ForegroundColor Green
       
-      if ($env:SSH_PRIVATE_KEY) {
-        Set-Content -Path $keyFile -Value $env:SSH_PRIVATE_KEY -NoNewline
-        Write-Host "✅ SSH 私钥已保存" -ForegroundColor Green
-        
-        $firstLine = Get-Content -Path $keyFile -First 1
-        if ($firstLine -notmatch "-----BEGIN") {
-          Write-Host "⚠️  SSH 密钥格式可能有问题" -ForegroundColor Yellow
-          Write-Host "第一行: $firstLine" -ForegroundColor Gray
-        }
-      } else {
-        Write-Host "❌ SSH_PRIVATE_KEY 未设置" -ForegroundColor Red
-        exit 1
+      # 验证私钥格式
+      $firstLine = Get-Content -Path $sshKeyPath -First 1
+      if ($firstLine -notmatch "-----BEGIN") {
+        Write-Host "⚠️  SSH 密钥格式可能有问题" -ForegroundColor Yellow
+        Write-Host "第一行: $firstLine" -ForegroundColor Gray
       }
       
       # 测试服务器连通性
@@ -264,15 +261,18 @@ deploy-auto:
       
       # 测试 SSH 连接
       Write-Host "测试 SSH 连接..." -ForegroundColor Yellow
-      $sshTestCmd = "ssh -i '$keyFile' -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no '$($env:SERVER_USER)@$($env:SERVER_IP)' 'echo SSH_CONNECT_TEST_OK && exit 0' 2>&1"
-      $sshOutput = cmd /c "$sshTestCmd 2>&1"
+      $sshTestCmd = "ssh -i '$sshKeyPath' -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no '$($env:SERVER_USER)@$($env:SERVER_IP)' 'echo SSH_CONNECT_TEST_OK && exit 0' 2>&1"
+      $sshOutput = cmd /c "$sshTestCmd"
       if ($sshOutput -match "SSH_CONNECT_TEST_OK") {
         Write-Host "✅ SSH 连接测试成功" -ForegroundColor Green
+        # 将路径存入环境变量供 script 使用
+        [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath)
       } else {
         Write-Host "❌ SSH 连接测试失败" -ForegroundColor Red
         Write-Host "输出: $sshOutput" -ForegroundColor Gray
         exit 1
       }
+  
   script:
     - |
       Write-Host "🎯 开始全自动部署..." -ForegroundColor Green
@@ -282,7 +282,13 @@ deploy-auto:
       $user = $env:SERVER_USER
       $deployPath = $env:DEPLOY_PATH
       $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-      $sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa"
+      # 从环境变量获取密钥路径（确保与 before_script 一致）
+      $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
+      
+      if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
+        Write-Host "❌ SSH 密钥路径未设置或文件不存在" -ForegroundColor Red
+        exit 1
+      }
       
       Write-Host "部署信息:" -ForegroundColor Cyan
       Write-Host "  - 服务器: ${user}@${server}"
@@ -386,14 +392,16 @@ deploy-auto:
       Write-Host "================================="
       
       Write-Host "`n📢 部署完成通知已发送" -ForegroundColor Gray
+  
   after_script:
     - |
       Write-Host "🧹 清理临时文件..." -ForegroundColor Gray
-      $keyFile = "$env:USERPROFILE\.ssh\id_rsa"
-      if (Test-Path $keyFile) {
-        Remove-Item $keyFile -Force -ErrorAction SilentlyContinue
+      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
+      if (Test-Path $sshKeyPath) {
+        Remove-Item $sshKeyPath -Force -ErrorAction SilentlyContinue
         Write-Host "✅ 已清理 SSH 私钥" -ForegroundColor Green
       }
+  
   tags:
     - local
   only:
