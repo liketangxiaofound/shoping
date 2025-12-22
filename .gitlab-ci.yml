@@ -200,6 +200,7 @@ deploy-semi-auto:
     - main
   when: manual
 
+
 # 阶段5: 全自动部署（推送时自动触发）
 deploy-auto:
   stage: deploy
@@ -229,11 +230,9 @@ deploy-auto:
       $keyFile = "$sshDir\id_rsa"
       
       if ($env:SSH_PRIVATE_KEY) {
-        # 将私钥保存到文件
         Set-Content -Path $keyFile -Value $env:SSH_PRIVATE_KEY -NoNewline
         Write-Host "✅ SSH 私钥已保存" -ForegroundColor Green
         
-        # 检查密钥格式
         $firstLine = Get-Content -Path $keyFile -First 1
         if ($firstLine -notmatch "-----BEGIN") {
           Write-Host "⚠️  SSH 密钥格式可能有问题" -ForegroundColor Yellow
@@ -248,7 +247,6 @@ deploy-auto:
       Write-Host "测试服务器连通性..." -ForegroundColor Yellow
       $pingSuccess = $false
       $maxPingAttempts = 3
-      
       for ($i = 1; $i -le $maxPingAttempts; $i++) {
         Write-Host "尝试 $i/$maxPingAttempts..."
         if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet -ErrorAction SilentlyContinue) {
@@ -258,28 +256,20 @@ deploy-auto:
         }
         Start-Sleep -Seconds 2
       }
-      
       if (-not $pingSuccess) {
-        Write-Host "❌ 无法连接服务器: $env:SERVER_IP" -ForegroundColor Red
+        Write-Host "❌ 无法连接服务器: $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
       
       # 测试 SSH 连接
       Write-Host "测试 SSH 连接..." -ForegroundColor Yellow
-      $sshTestCmd = "ssh -i '$keyFile' -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no '$env:SERVER_USER@$env:SERVER_IP' 'echo SSH_CONNECT_TEST_OK && exit 0' 2>&1"
-      
+      $sshTestCmd = "ssh -i '$keyFile' -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no '$($env:SERVER_USER)@$($env:SERVER_IP)' 'echo SSH_CONNECT_TEST_OK && exit 0' 2>&1"
       $sshOutput = cmd /c "$sshTestCmd 2>&1"
       if ($sshOutput -match "SSH_CONNECT_TEST_OK") {
         Write-Host "✅ SSH 连接测试成功" -ForegroundColor Green
       } else {
         Write-Host "❌ SSH 连接测试失败" -ForegroundColor Red
         Write-Host "输出: $sshOutput" -ForegroundColor Gray
-        Write-Host "尝试不带密钥测试..." -ForegroundColor Yellow
-        
-        # 尝试不带密钥连接，查看错误信息
-        $sshTestNoKey = "ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no '$env:SERVER_USER@$env:SERVER_IP' 'echo test' 2>&1"
-        $sshNoKeyOutput = cmd /c "$sshTestNoKey"
-        Write-Host "无密钥连接输出: $sshNoKeyOutput" -ForegroundColor Gray
         exit 1
       }
   script:
@@ -294,17 +284,17 @@ deploy-auto:
       $sshKeyPath = "$env:USERPROFILE\.ssh\id_rsa"
       
       Write-Host "部署信息:" -ForegroundColor Cyan
-      Write-Host "  - 服务器: $user@$server"
-      Write-Host "  - 部署路径: $deployPath"
-      Write-Host "  - 时间戳: $timestamp"
+      Write-Host "  - 服务器: ${user}@${server}"
+      Write-Host "  - 部署路径: ${deployPath}"
+      Write-Host "  - 时间戳: ${timestamp}"
       Write-Host "  - 提交: $env:CI_COMMIT_SHORT_SHA"
       Write-Host "  - 分支: $env:CI_COMMIT_REF_NAME"
       Write-Host ""
       
       # 1. 备份服务器代码
       Write-Host "1️⃣ 备份服务器现有代码..." -ForegroundColor Yellow
-      $backupCmd = "cd '$deployPath' && tar -czf backup_$timestamp.tar.gz backend frontend 2>/dev/null || echo '首次部署，无需备份'"
-      $backupResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes -o StrictHostKeyChecking=no '$user@$server' '$backupCmd' 2>&1"
+      $backupCmd = "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，无需备份'"
+      $backupResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes -o StrictHostKeyChecking=no '${user}@${server}' '$backupCmd' 2>&1"
       Write-Host "备份结果: $backupResult" -ForegroundColor Gray
       Write-Host "✅ 备份完成" -ForegroundColor Green
       
@@ -314,17 +304,14 @@ deploy-auto:
         $backFileCount = (Get-ChildItem -Recurse -Path "back" | Measure-Object).Count
         Write-Host "发现 $backFileCount 个文件需要上传" -ForegroundColor Gray
         
-        # 创建服务器目录（如果不存在）
-        $mkdirBackend = "mkdir -p '$deployPath/backend'"
-        cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$mkdirBackend' 2>&1" | Out-Null
+        $mkdirBackend = "mkdir -p '${deployPath}/backend'"
+        cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$mkdirBackend' 2>&1" | Out-Null
         
-        # 上传文件
-        $uploadBackResult = cmd /c "scp -i '$sshKeyPath' -r -o BatchMode=yes back/* '$user@$server:$deployPath/backend/' 2>&1"
+        $uploadBackResult = cmd /c "scp -i '$sshKeyPath' -r -o BatchMode=yes back/* '${user}@${server}:${deployPath}/backend/' 2>&1"
         if ($LASTEXITCODE -eq 0) {
           Write-Host "✅ 后端代码上传完成" -ForegroundColor Green
         } else {
           Write-Host "❌ 后端代码上传失败: $uploadBackResult" -ForegroundColor Red
-          # 继续执行，不退出
         }
       } else {
         Write-Host "⚠️  back目录不存在，跳过后端部署" -ForegroundColor Yellow
@@ -336,12 +323,10 @@ deploy-auto:
         $frontFileCount = (Get-ChildItem -Recurse -Path "front" | Measure-Object).Count
         Write-Host "发现 $frontFileCount 个文件需要上传" -ForegroundColor Gray
         
-        # 创建服务器目录（如果不存在）
-        $mkdirFrontend = "mkdir -p '$deployPath/frontend'"
-        cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$mkdirFrontend' 2>&1" | Out-Null
+        $mkdirFrontend = "mkdir -p '${deployPath}/frontend'"
+        cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$mkdirFrontend' 2>&1" | Out-Null
         
-        # 上传文件
-        $uploadFrontResult = cmd /c "scp -i '$sshKeyPath' -r -o BatchMode=yes front/* '$user@$server:$deployPath/frontend/' 2>&1"
+        $uploadFrontResult = cmd /c "scp -i '$sshKeyPath' -r -o BatchMode=yes front/* '${user}@${server}:${deployPath}/frontend/' 2>&1"
         if ($LASTEXITCODE -eq 0) {
           Write-Host "✅ 前端代码上传完成" -ForegroundColor Green
         } else {
@@ -353,34 +338,30 @@ deploy-auto:
       
       # 4. 安装依赖
       Write-Host "`n4️⃣ 安装后端依赖..." -ForegroundColor Yellow
-      $installCmd = "cd '$deployPath/backend' && npm install --production 2>&1"
-      $installResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$installCmd' 2>&1"
-      
+      $installCmd = "cd '${deployPath}/backend' && npm install --production 2>&1"
+      $installResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$installCmd' 2>&1"
       if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ 依赖安装完成" -ForegroundColor Green
       } else {
         Write-Host "❌ 依赖安装失败: $installResult" -ForegroundColor Red
-        # 继续执行，可能部分依赖已安装
       }
       
       # 5. 重启服务
       Write-Host "`n5️⃣ 重启 PM2 服务..." -ForegroundColor Yellow
-      $restartCmd = "cd '$deployPath/backend' && pm2 restart all 2>&1"
-      $restartResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$restartCmd' 2>&1"
-      
+      $restartCmd = "cd '${deployPath}/backend' && pm2 restart all 2>&1"
+      $restartResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$restartCmd' 2>&1"
       if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ 服务重启成功" -ForegroundColor Green
       } else {
         Write-Host "⚠️  PM2重启失败，尝试启动新进程..." -ForegroundColor Yellow
-        $startCmd = "cd '$deployPath/backend' && pm2 start npm --name 'backend' -- run start 2>&1"
-        $startResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$startCmd' 2>&1"
+        $startCmd = "cd '${deployPath}/backend' && pm2 start npm --name 'backend' -- run start 2>&1"
+        $startResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$startCmd' 2>&1"
         Write-Host "启动结果: $startResult" -ForegroundColor Gray
       }
       
       # 6. 健康检查
       Write-Host "`n6️⃣ 健康检查..." -ForegroundColor Yellow
       Start-Sleep -Seconds 5
-      
       $healthCheck = @"
         echo "检查 Node.js 进程:"
         ps aux | grep node | grep -v grep
@@ -391,25 +372,22 @@ deploy-auto:
         echo "检查端口 3000:"
         netstat -tlnp | grep :3000 || echo "端口 3000 未监听"
       "@
-      
-      $healthResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '$user@$server' '$healthCheck' 2>&1"
+      $healthResult = cmd /c "ssh -i '$sshKeyPath' -o BatchMode=yes '${user}@${server}' '$healthCheck' 2>&1"
       Write-Host "健康检查结果:" -ForegroundColor Cyan
       $healthResult
       
       Write-Host "`n🎉 全自动部署完成！" -ForegroundColor Green
       Write-Host "================================="
-      Write-Host "🌍 网站地址: http://$server:3000"
+      Write-Host "🌍 网站地址: http://${server}:3000"
       Write-Host "📅 部署时间: $(Get-Date)"
       Write-Host "🔧 提交哈希: $env:CI_COMMIT_SHORT_SHA"
       Write-Host "🌿 分支: $env:CI_COMMIT_REF_NAME"
       Write-Host "================================="
       
-      # 7. 发送部署通知（可选）
       Write-Host "`n📢 部署完成通知已发送" -ForegroundColor Gray
   after_script:
     - |
       Write-Host "🧹 清理临时文件..." -ForegroundColor Gray
-      # 清理 SSH 私钥文件
       $keyFile = "$env:USERPROFILE\.ssh\id_rsa"
       if (Test-Path $keyFile) {
         Remove-Item $keyFile -Force -ErrorAction SilentlyContinue
@@ -418,13 +396,8 @@ deploy-auto:
   tags:
     - local
   only:
-    - main           # 只在 main 分支触发
-  when: on_success   # 当之前所有阶段成功时自动触发
+    - main
+  when: on_success
   environment:
     name: production
-    url: http://$env:SERVER_IP:3000
-  # 可选：设置部署规则
-  # rules:
-  #   - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
-  #     when: on_success
-  #   - when: manual
+    url: http://$SERVER_IP:3000
