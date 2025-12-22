@@ -93,11 +93,11 @@ deploy-semi-auto:
   stage: deploy
   before_script:
     # 设置 SSH
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
+     - mkdir -p ~/.ssh
+     - chmod 700 ~/.ssh
     
     # 如果存在 SSH_PRIVATE_KEY 变量，则使用
-    - if (Test-Path "$env:SSH_PRIVATE_KEY") {
+     - if (Test-Path "$env:SSH_PRIVATE_KEY") {
         echo "✅ 找到 SSH 私钥"
         Copy-Item "$env:SSH_PRIVATE_KEY" ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
@@ -108,14 +108,14 @@ deploy-semi-auto:
       }
     
     # 测试 SSH 连接
-    - echo "🔌 测试服务器连接..."
-    - $pingResult = ping -n 1 ${SERVER_IP}
-     if ($LASTEXITCODE -eq 0) {
+     - echo "🔌 测试服务器连接..."
+     - $pingResult = ping -n 1 ${SERVER_IP}
+      if ($LASTEXITCODE -eq 0) {
       echo "✅ 服务器可以连通"
-    } else {
+     } else {
       echo "❌ 无法连接服务器"
       exit 1
-    }
+     }
   script:
     - |
       Write-Host "🚀 半自动部署到阿里云" -ForegroundColor Cyan
