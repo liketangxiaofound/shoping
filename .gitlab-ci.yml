@@ -93,7 +93,6 @@ deploy-semi-auto:
   stage: deploy
   before_script:
     # 设置 SSH
-    - echo "🔧 配置 SSH 密钥..."
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     
