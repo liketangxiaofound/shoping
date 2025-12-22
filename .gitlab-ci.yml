@@ -205,7 +205,11 @@ deploy-auto:
   stage: deploy
   before_script:
     - |
+      # 🔒 强制使用系统 TEMP 目录 —— 不允许任何自定义路径！
+      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
+      
       Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
+      Write-Host "ℹ️  使用安全临时路径: $sshKeyPath" -ForegroundColor DarkGray
 
       # === 检查必要环境变量 ===
       $requiredVars = @("SERVER_IP", "SERVER_USER", "DEPLOY_PATH", "SSH_PRIVATE_KEY")
@@ -221,30 +225,33 @@ deploy-auto:
         exit 1
       }
 
-      # ✅ 关键修复：使用系统 TEMP 目录（不再用 C:\newtemp！）
-      $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
-      Write-Host "配置 SSH 私钥到临时路径: $sshKeyPath" -ForegroundColor Yellow
-
-      # === 标准化私钥格式 ===
+      # === 标准化私钥：修复换行符 + 补末尾换行 ===
       $rawKey = $env:SSH_PRIVATE_KEY
       $normalizedKey = $rawKey -replace "`r`n", "`n" -replace "`r", "`n"
       if (-not $normalizedKey.EndsWith("`n")) {
         $normalizedKey += "`n"
       }
 
-      # 写入文件（现在一定有权限！）
-      $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
-      [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
+      # === 写入私钥（UTF-8 无 BOM）===
+      try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
+        [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
+        Write-Host "✅ 私钥已写入临时文件" -ForegroundColor Green
+      } catch {
+        Write-Host "❌ 写入私钥失败: $_" -ForegroundColor Red
+        Write-Host "💡 请勿使用 C:\newtemp 等非用户目录！" -ForegroundColor Yellow
+        exit 1
+      }
 
-      # === 调试输出 ===
+      # === 调试：检查首行 ===
       $firstLine = Get-Content -Path $sshKeyPath -First 1 -Encoding UTF8
-      Write-Host "DEBUG: 私钥首行: $firstLine" -ForegroundColor Magenta
+      Write-Host "🔍 私钥首行: $firstLine" -ForegroundColor Magenta
 
-      # === 设置严格权限 ===
+      # === 限制权限（仅当前用户可读）===
       $currentUserName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-      Write-Host "🔒 限制私钥权限（仅 ${currentUserName} 可读）..." -ForegroundColor Yellow
+      Write-Host "🔒 设置私钥权限（仅 ${currentUserName} 可读）..." -ForegroundColor Yellow
       icacls "$sshKeyPath" /inheritance:r /grant:r "${currentUserName}:(R)" /Q 2>$null | Out-Null
-      Write-Host "✅ 私钥权限已锁定" -ForegroundColor Green
+      Write-Host "✅ 权限已锁定" -ForegroundColor Green
 
       # === 测试服务器连通性 ===
       Write-Host "📡 测试服务器连通性 ($($env:SERVER_IP))..." -ForegroundColor Yellow
@@ -264,81 +271,68 @@ deploy-auto:
       }
 
       # === 测试 SSH 连接 ===
-      Write-Host "🔑 测试 SSH 连接..." -ForegroundColor Yellow
-      $sshTestCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo 'SSH_OK' && exit 0`""
-      $result = & cmd /c "$sshTestCmd" 2>&1
-      if ($LASTEXITCODE -eq 0 -and ($result -join "`n") -match "SSH_OK") {
+      Write-Host "🔑 测试 SSH 认证..." -ForegroundColor Yellow
+      $sshCmd = "ssh -i `"${sshKeyPath}`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"${env:SERVER_USER}@${env:SERVER_IP}`" `"echo 'SSH_OK' && exit 0`""
+      $output = & cmd /c "$sshCmd" 2>&1
+      if ($LASTEXITCODE -eq 0 -and ($output -join "`n") -match "SSH_OK") {
         Write-Host "✅ SSH 连接成功" -ForegroundColor Green
         [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath)
       } else {
         Write-Host "❌ SSH 连接失败" -ForegroundColor Red
-        Write-Host "输出: $($result -join "`n")" -ForegroundColor Gray
+        Write-Host "输出: $($output -join "`n")" -ForegroundColor Gray
         exit 1
       }
 
   script:
     - |
-      Write-Host "🎯 开始全自动部署..." -ForegroundColor Green
-      Write-Host "================================="
+      $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
+      if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
+        Write-Host "❌ SSH 密钥未准备好" -ForegroundColor Red
+        exit 1
+      }
 
       $server = $env:SERVER_IP
       $user = $env:SERVER_USER
       $deployPath = $env:DEPLOY_PATH
       $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-      $sshKeyPath = $env:GITLAB_SSH_KEY_PATH
 
-      if (-not $sshKeyPath -or -not (Test-Path $sshKeyPath)) {
-        Write-Host "❌ SSH 密钥路径无效" -ForegroundColor Red
-        exit 1
-      }
-
-      Write-Host "部署信息:" -ForegroundColor Cyan
-      Write-Host "  - 服务器: ${user}@${server}"
-      Write-Host "  - 路径: ${deployPath}"
-      Write-Host "  - 时间戳: ${timestamp}"
-      Write-Host ""
+      Write-Host "🎯 开始部署到 ${user}@${server}:${deployPath}" -ForegroundColor Green
 
       # 备份
-      Write-Host "1️⃣ 备份现有代码..." -ForegroundColor Yellow
-      $backupCmd = "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，跳过备份'"
-      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$backupCmd`" | Out-Null
-      Write-Host "✅ 备份完成" -ForegroundColor Green
+      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `"cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署'`"" | Out-Null
+      Write-Host "✅ 已备份（如存在）" -ForegroundColor Green
 
       # 上传后端
       if (Test-Path "back") {
-        Write-Host "`n2️⃣ 上传后端..." -ForegroundColor Yellow
         & cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/backend`"" | Out-Null
         & cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes back/* `${user}@${server}:${deployPath}/backend/`"
-        Write-Host "✅ 后端上传完成" -ForegroundColor Green
+        Write-Host "✅ 后端已上传" -ForegroundColor Green
       }
 
       # 上传前端
       if (Test-Path "front") {
-        Write-Host "`n3️⃣ 上传前端..." -ForegroundColor Yellow
         & cmd /c "ssh -i `"${sshKeyPath}`" `${user}@${server}` `"mkdir -p ${deployPath}/frontend`"" | Out-Null
         & cmd /c "scp -i `"${sshKeyPath}`" -r -o BatchMode=yes front/* `${user}@${server}:${deployPath}/frontend/`"
-        Write-Host "✅ 前端上传完成" -ForegroundColor Green
+        Write-Host "✅ 前端已上传" -ForegroundColor Green
       }
 
       # 重启服务
-      Write-Host "`n4️⃣ 重启服务..." -ForegroundColor Yellow
-      $restartScript = @"
+      $restart = @"
       cd '${deployPath}/backend'
       npm install --production
       pm2 restart all || pm2 start npm --name 'backend' -- run start
       "@
-      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$restartScript`" | Out-Null
-      Write-Host "✅ 服务已更新" -ForegroundColor Green
-
-      Write-Host "`n🎉 部署成功！访问: http://${server}:3000" -ForegroundColor Green
+      & cmd /c "ssh -i `"${sshKeyPath}`" -o BatchMode=yes -o StrictHostKeyChecking=no `${user}@${server}` `$restart`" | Out-Null
+      Write-Host "✅ 服务已重启" -ForegroundColor Green
+      Write-Host "`n🎉 部署完成！访问: http://${server}:3000" -ForegroundColor Green
 
   after_script:
     - |
-      Write-Host "🧹 清理临时文件..." -ForegroundColor Gray
+      Write-Host "🧹 清理临时密钥..." -ForegroundColor Gray
       $sshKeyPath = "$env:TEMP\gitlab_deploy_key"
       if (Test-Path $sshKeyPath) {
         Remove-Item $sshKeyPath -Force
-        Write-Host "✅ 已清理 SSH 私钥" -ForegroundColor Green
+        Write-Host "✅ 临时密钥已删除" -ForegroundColor Green
       }
 
   tags:
