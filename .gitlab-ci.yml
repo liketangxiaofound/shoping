@@ -89,7 +89,7 @@ unit-test-job:
   allow_failure: true
 
 # 阶段4: 部署
-# 阶段4: 简单的真实部署
+# 阶阶段4: 简单的真实部署
 deploy-simple:
   stage: deploy
   script:
@@ -98,27 +98,27 @@ deploy-simple:
       Write-Host "================================="
       Write-Host ""
       Write-Host "📁 目录映射:" -ForegroundColor Yellow
-      Write-Host "   本地 back/  → 服务器 $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/backend/"
-      Write-Host "   本地 front/ → 服务器 $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/frontend/"
+      Write-Host "   本地 back/  → 服务器 ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/backend/"
+      Write-Host "   本地 front/ → 服务器 ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/frontend/"
       Write-Host ""
       Write-Host "🔧 部署命令:" -ForegroundColor Yellow
       Write-Host ""
       Write-Host "# 1. 复制文件到服务器" -ForegroundColor Green
-      Write-Host "scp -r back/* $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/backend/"
-      Write-Host "scp -r front/* $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/frontend/"
+      Write-Host "scp -r back/* ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/backend/"
+      Write-Host "scp -r front/* ${SERVER_USER}@${SERVER_IP}:${DEPLOY_PATH}/frontend/"
       Write-Host ""
       Write-Host "# 2. 安装后端依赖" -ForegroundColor Green
-      Write-Host "ssh $SERVER_USER@$SERVER_IP 'cd ${DEPLOY_PATH}/backend && npm install --production'"
+      Write-Host "ssh ${SERVER_USER}@${SERVER_IP} 'cd ${DEPLOY_PATH}/backend && npm install --production'"
       Write-Host ""
       Write-Host "# 3. 重启服务" -ForegroundColor Green
-      Write-Host "ssh $SERVER_USER@$SERVER_IP 'cd ${DEPLOY_PATH}/backend && pm2 restart all'"
+      Write-Host "ssh ${SERVER_USER}@${SERVER_IP} 'cd ${DEPLOY_PATH}/backend && pm2 restart all'"
       Write-Host ""
       Write-Host "# 4. 检查状态" -ForegroundColor Green
-      Write-Host "ssh $SERVER_USER@$SERVER_IP 'pm2 list'"
+      Write-Host "ssh ${SERVER_USER}@${SERVER_IP} 'pm2 list'"
       Write-Host ""
       Write-Host "================================="
       Write-Host "✅ 按照以上命令执行即可完成部署"
-      Write-Host "🌍 访问地址: http://$SERVER_IP"
+      Write-Host "🌍 访问地址: http://${SERVER_IP}"
   tags:
     - local
   only:
