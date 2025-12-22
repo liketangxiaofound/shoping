@@ -205,145 +205,71 @@ deploy-semi-auto:
 deploy-auto:
   stage: deploy
   before_script:
-    - |
-      Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
-      
-      # 🔧 关键修复1: 使用真正的用户 TEMP 目录
-      # 优先使用 USERPROFILE 下的临时目录，避免权限问题
-      $userTemp = [System.IO.Path]::Combine($env:USERPROFILE, "AppData", "Local", "Temp")
-      if (-not (Test-Path $userTemp)) {
-        $userTemp = $env:TEMP
-      }
-      
-      # 🔧 关键修复2: 使用随机文件名，避免冲突
-      $random = Get-Random -Minimum 1000 -Maximum 9999
-      $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-      $sshKeyPath = [System.IO.Path]::Combine($userTemp, "gitlab_deploy_key_${timestamp}_${random}")
-      
-      Write-Host "ℹ️  使用安全临时路径: $sshKeyPath" -ForegroundColor DarkGray
-      
-      # === 检查必要环境变量 ===
-      $requiredVars = @("SERVER_IP", "SERVER_USER", "DEPLOY_PATH", "SSH_PRIVATE_KEY")
-      $missingVars = @()
-      foreach ($var in $requiredVars) {
-        $value = Get-Item "env:$var" -ErrorAction SilentlyContinue
-        if (-not $value -or [string]::IsNullOrWhiteSpace($value.Value)) {
-          $missingVars += $var
-        }
-      }
-      
-      if ($missingVars.Count -gt 0) {
-        Write-Host "❌ 缺少以下 GitLab CI/CD 变量: $($missingVars -join ', ')" -ForegroundColor Red
-        Write-Host "请在项目 Settings → CI/CD → Variables 中设置它们" -ForegroundColor Yellow
-        exit 1
-      }
-      
-      Write-Host "✅ 环境变量检查通过" -ForegroundColor Green
-      
-      # === 标准化私钥：修复换行符 ===
-      $rawKey = $env:SSH_PRIVATE_KEY
-      Write-Host "🔍 原始私钥长度: $($rawKey.Length) 字符" -ForegroundColor DarkGray
-      
-      $normalizedKey = $rawKey -replace "`r`n", "`n" -replace "`r", "`n"
-      if (-not $normalizedKey.EndsWith("`n")) {
-        $normalizedKey += "`n"
-      }
-      
-      # === 写入私钥（UTF-8 无 BOM）===
-      try {
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
-        [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
-        Write-Host "✅ 私钥已写入临时文件" -ForegroundColor Green
-        
-        # 🔧 关键修复3: 检查文件是否成功写入
-        if (-not (Test-Path $sshKeyPath)) {
-          Write-Host "❌ 私钥文件写入失败" -ForegroundColor Red
-          exit 1
-        }
-        
-        $fileSize = (Get-Item $sshKeyPath).Length
-        Write-Host "📁 文件大小: $fileSize 字节" -ForegroundColor DarkGray
-        
-      } catch {
-        Write-Host "❌ 写入私钥失败: $_" -ForegroundColor Red
-        Write-Host "💡 可能是权限问题，尝试使用其他目录..." -ForegroundColor Yellow
-        
-        # 尝试备用目录
-        $sshKeyPath = [System.IO.Path]::Combine($env:USERPROFILE, "gitlab_deploy_key_${timestamp}_${random}")
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes($normalizedKey)
-        [System.IO.File]::WriteAllBytes($sshKeyPath, $bytes)
-        Write-Host "✅ 私钥已写入备用路径" -ForegroundColor Green
-      }
-      
-      # === 调试：检查首行 ===
-      $firstLine = Get-Content -Path $sshKeyPath -First 1 -Encoding UTF8
-      Write-Host "🔍 私钥首行: $firstLine" -ForegroundColor Magenta
-      
-      # 🔧 关键修复4: 使用更简单的权限设置，避免复杂的 icacls
-      Write-Host "🔒 设置文件权限..." -ForegroundColor Yellow
-      
-      # 方法1: 使用 PowerShell 的 ACL
-      try {
-        $acl = Get-Acl -Path $sshKeyPath
-        $acl.SetAccessRuleProtection($true, $false)  # 禁用继承
-        Set-Acl -Path $sshKeyPath -AclObject $acl
-        Write-Host "✅ 使用 PowerShell ACL 设置权限" -ForegroundColor Green
-      } catch {
-        Write-Host "⚠️  PowerShell ACL 设置失败: $_" -ForegroundColor Yellow
-        Write-Host "ℹ️  尝试使用简单方法..." -ForegroundColor Gray
-      }
-      
-      # 设置为隐藏文件
-      attrib +h $sshKeyPath 2>$null
-      
-      # === 测试服务器连通性 ===
-      Write-Host "📡 测试服务器连通性 ($($env:SERVER_IP))..." -ForegroundColor Yellow
-      $pingSuccess = $false
-      for ($i = 1; $i -le 3; $i++) {
-        Write-Host "尝试 $i/3..."
-        if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet -ErrorAction SilentlyContinue) {
-          $pingSuccess = $true
-          Write-Host "✅ 服务器可达" -ForegroundColor Green
-          break
-        }
-        Start-Sleep -Seconds 2
-      }
-      
-      if (-not $pingSuccess) {
-        Write-Host "❌ 无法 ping 通 $($env:SERVER_IP)" -ForegroundColor Red
-        exit 1
-      }
-      
-      # === 测试 SSH 连接 ===
-      Write-Host "🔑 测试 SSH 认证..." -ForegroundColor Yellow
-      
-      # 使用 Job 控制超时
-      $job = Start-Job -ScriptBlock {
-        param($keyPath, $user, $server)
-        ssh -i $keyPath -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no "${user}@${server}" "echo 'SSH_OK'" 2>&1
-      } -ArgumentList $sshKeyPath, $env:SERVER_USER, $env:SERVER_IP
-      
-      $result = Wait-Job $job -Timeout 15
-      
-      if ($result) {
-        $output = Receive-Job $job
-        if ($output -like "*SSH_OK*") {
-          Write-Host "✅ SSH 连接成功" -ForegroundColor Green
-          [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath, "Process")
-        } else {
-          Write-Host "❌ SSH 连接失败" -ForegroundColor Red
-          Write-Host "输出: $output" -ForegroundColor Gray
-          exit 1
-        }
-      } else {
-        Write-Host "❌ SSH 连接超时" -ForegroundColor Red
-        Stop-Job $job
-        exit 1
-      }
-      
-      Remove-Job $job
-      
-      Write-Host "✅ 初始化完成，准备部署" -ForegroundColor Green
+  - |
+    Write-Host "🚀 全自动部署初始化..." -ForegroundColor Cyan
+    
+    # === 1. 确定安全临时路径 ===
+    $tempBase = if ([System.IO.Directory]::Exists("$env:USERPROFILE\AppData\Local\Temp")) {
+      "$env:USERPROFILE\AppData\Local\Temp"
+    } else {
+      $env:TEMP
+    }
+    $sshKeyPath = Join-Path $tempBase ("gitlab_deploy_key_" + (Get-Date -Format "yyyyMMddHHmmss") + "_" + (Get-Random -Minimum 1000 -Maximum 9999))
+    
+    Write-Host "ℹ️  使用安全临时路径: $sshKeyPath" -ForegroundColor DarkGray
+
+    # === 2. 检查环境变量 ===
+    $requiredVars = @("SERVER_IP", "SERVER_USER", "DEPLOY_PATH", "SSH_PRIVATE_KEY")
+    $missing = @($requiredVars | Where-Object { [string]::IsNullOrWhiteSpace((Get-Item "env:$_" -ErrorAction SilentlyContinue)?.Value) })
+    if ($missing.Count -gt 0) {
+      Write-Host "❌ 缺少变量: $($missing -join ', ')" -ForegroundColor Red
+      exit 1
+    }
+
+    # === 3. 写入标准化私钥 ===
+    $key = $env:SSH_PRIVATE_KEY -replace "`r`n", "`n" -replace "`r", "`n"
+    if (-not $key.EndsWith("`n")) { $key += "`n" }
+    [System.IO.File]::WriteAllBytes($sshKeyPath, [System.Text.Encoding]::UTF8.GetBytes($key))
+    Write-Host "✅ 私钥写入成功 (大小: $((Get-Item $sshKeyPath).Length) 字节)" -ForegroundColor Green
+
+    # === 4. 🔑【关键】严格设置私钥权限 ===
+    Write-Host "🔒 锁定私钥文件权限..." -ForegroundColor Yellow
+
+    # 获取当前用户名（格式：DOMAIN\user 或 user）
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $userName = $identity.Name
+
+    # 创建全新 ACL（清空所有现有规则！）
+    $acl = New-Object System.Security.AccessControl.FileSecurity
+    $acl.SetOwner([System.Security.Principal.NTAccount]$userName)
+    $acl.SetAccessRuleProtection($true, $false)  # 禁用继承
+
+    # 仅添加当前用户的“读取”权限
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+      $userName,
+      "Read",
+      "None",
+      "None",
+      "Allow"
+    )
+    $acl.AddAccessRule($rule)
+
+    # 应用 ACL
+    Set-Acl -Path $sshKeyPath -AclObject $acl
+
+    Write-Host "✅ 权限已严格锁定（仅 $userName 可读）" -ForegroundColor Green
+
+    # === 5. 测试 SSH 连接 ===
+    Write-Host "🔑 测试 SSH 连接..." -ForegroundColor Yellow
+    $testCmd = "ssh -i `"$sshKeyPath`" -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no `"$($env:SERVER_USER)@$($env:SERVER_IP)`" `"echo 'SSH_OK'`""
+    $output = & cmd /c "$testCmd" 2>&1
+    if ($LASTEXITCODE -eq 0 -and ($output -join "`n") -match "SSH_OK") {
+      Write-Host "✅ SSH 认证成功" -ForegroundColor Green
+      [System.Environment]::SetEnvironmentVariable("GITLAB_SSH_KEY_PATH", $sshKeyPath, "Process")
+    } else {
+      Write-Host "❌ SSH 失败: $($output -join "`n")" -ForegroundColor Red
+      exit 1
+    }
   
   script:
     - |
