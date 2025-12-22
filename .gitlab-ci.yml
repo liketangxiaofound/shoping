@@ -89,46 +89,36 @@ unit-test-job:
   allow_failure: true
 
 # 阶段4: 部署
-deploy-job:
+# 阶段4: 简单的真实部署
+deploy-simple:
   stage: deploy
   script:
-    - echo "🚀 开始部署到阿里云服务器..."
-    - echo "================================="
-    
-    # 1. 配置变量
-    - $server = "8.155.175.119"
-    - $user = "linger"
-    - $deployPath = "/home/linger/shopping-app"
-    - $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    
-    # 2. 准备部署包
-    - Write-Host "步骤1: 准备部署包..."
-    - Compress-Archive -Path back/* -DestinationPath "deploy-back-$timestamp.zip"
-    - Write-Host "✅ 部署包准备完成"
-    
-    # 3. 备份当前版本
-    - Write-Host "步骤2: 备份当前版本..."
-    - ssh ${user}@${server} "cd $deployPath && tar -czf backup-$timestamp.tar.gz ."
-    - Write-Host "✅ 备份完成"
-    
-    # 4. 上传新版本
-    - Write-Host "步骤3: 上传新版本..."
-    - scp "deploy-back-$timestamp.zip" ${user}@${server}:"${deployPath}/deploy-back-$timestamp.zip"
-    
-    # 5. 部署
-    - Write-Host "步骤4: 部署应用..."
-    - ssh ${user}@${server} "
-        cd $deployPath
-        unzip -o deploy-back-$timestamp.zip
-        rm deploy-back-$timestamp.zip
-        npm install --production
-        pm2 restart shopping-app || pm2 start app.js --name shopping-app
-      "
-    
-    # 6. 清理
-    - Remove-Item "deploy-back-$timestamp.zip"
-    
-    - echo "================================="
+    - |
+      Write-Host "🚀 真实部署 - 手动操作指南" -ForegroundColor Cyan
+      Write-Host "================================="
+      Write-Host ""
+      Write-Host "📁 目录映射:" -ForegroundColor Yellow
+      Write-Host "   本地 back/  → 服务器 $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/backend/"
+      Write-Host "   本地 front/ → 服务器 $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/frontend/"
+      Write-Host ""
+      Write-Host "🔧 部署命令:" -ForegroundColor Yellow
+      Write-Host ""
+      Write-Host "# 1. 复制文件到服务器" -ForegroundColor Green
+      Write-Host "scp -r back/* $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/backend/"
+      Write-Host "scp -r front/* $SERVER_USER@$SERVER_IP:${DEPLOY_PATH}/frontend/"
+      Write-Host ""
+      Write-Host "# 2. 安装后端依赖" -ForegroundColor Green
+      Write-Host "ssh $SERVER_USER@$SERVER_IP 'cd ${DEPLOY_PATH}/backend && npm install --production'"
+      Write-Host ""
+      Write-Host "# 3. 重启服务" -ForegroundColor Green
+      Write-Host "ssh $SERVER_USER@$SERVER_IP 'cd ${DEPLOY_PATH}/backend && pm2 restart all'"
+      Write-Host ""
+      Write-Host "# 4. 检查状态" -ForegroundColor Green
+      Write-Host "ssh $SERVER_USER@$SERVER_IP 'pm2 list'"
+      Write-Host ""
+      Write-Host "================================="
+      Write-Host "✅ 按照以上命令执行即可完成部署"
+      Write-Host "🌍 访问地址: http://$SERVER_IP"
   tags:
     - local
   only:
