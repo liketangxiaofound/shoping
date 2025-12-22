@@ -93,35 +93,37 @@ deploy-semi-auto:
   stage: deploy
   before_script:
     - |
-      # 全部用 PowerShell 写（因为 tags: local 很可能是 Windows）
       Write-Host "🛠️ 配置 SSH 环境..." -ForegroundColor Cyan
       
-      # 创建 .ssh 目录
       $sshDir = "$env:USERPROFILE\.ssh"
       if (-not (Test-Path $sshDir)) {
         New-Item -ItemType Directory -Path $sshDir | Out-Null
       }
-      & chmod 700 $sshDir
       
-      # 检查是否设置了 SSH_PRIVATE_KEY（GitLab CI 变量）
+      # 设置 .ssh 目录权限（仅当前用户）
+      icacls $sshDir /inheritance:r /grant:r "$env:USERNAME:(F)" | Out-Null
+      
+      # 检查 SSH_PRIVATE_KEY
       if ($env:SSH_PRIVATE_KEY) {
         Write-Host "✅ 找到 SSH_PRIVATE_KEY 变量"
-        # 将私钥内容写入文件（注意：变量是密钥内容，不是路径！）
-        Set-Content -Path "$sshDir\id_rsa" -Value $env:SSH_PRIVATE_KEY -NoNewline
-        & chmod 600 "$sshDir\id_rsa"
+        $keyFile = "$sshDir\id_rsa"
+        Set-Content -Path $keyFile -Value $env:SSH_PRIVATE_KEY -NoNewline
+        
+        # 设置私钥权限（仅当前用户读写）
+        icacls $keyFile /inheritance:r /grant:r "$env:USERNAME:(R,W)" | Out-Null
         Write-Host "✅ SSH 私钥已配置"
       } else {
-        Write-Host "⚠️  未设置 SSH_PRIVATE_KEY 变量" -ForegroundColor Yellow
-        Write-Host "请在 GitLab CI/CD Variables 中添加 SSH_PRIVATE_KEY（类型为 File 或 Variable）"
+        Write-Host "⚠️ 未设置 SSH_PRIVATE_KEY 变量" -ForegroundColor Yellow
+        Write-Host "请在 GitLab CI/CD Variables 中添加 SSH_PRIVATE_KEY"
+        exit 1
       }
       
-      # 测试服务器连通性（ping）
+      # 测试连通性
       Write-Host "🔌 测试服务器连通性..."
-      $pingResult = Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet -ErrorAction SilentlyContinue
-      if ($pingResult) {
+      if (Test-Connection -ComputerName $env:SERVER_IP -Count 1 -Quiet) {
         Write-Host "✅ 服务器可以连通"
       } else {
-        Write-Host "❌ 无法 ping 通服务器: $($env:SERVER_IP)" -ForegroundColor Red
+        Write-Host "❌ 无法 ping 通服务器" -ForegroundColor Red
         exit 1
       }
   script:
