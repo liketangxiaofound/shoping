@@ -124,7 +124,7 @@ deploy-semi-auto:
         Write-Host "❌ 无法 ping 通服务器: $($env:SERVER_IP)" -ForegroundColor Red
         exit 1
       }
-  script:
+      script:
     - |
       Write-Host "🚀 半自动部署到阿里云" -ForegroundColor Cyan
       Write-Host "================================="
@@ -151,58 +151,48 @@ deploy-semi-auto:
       if ($hasSshKey) {
         Write-Host "🔐 检测到 SSH 密钥，可以尝试自动上传" -ForegroundColor Green
         Write-Host ""
-        Write-Host "请确认是否继续执行以下操作：" -ForegroundColor Yellow
-        Write-Host "1. 备份服务器现有代码"
-        Write-Host "2. 上传后端代码"
-        Write-Host "3. 上传前端代码"
-        Write-Host "4. 自动重启服务"
-        Write-Host ""
-        
-        # 注意：GitLab CI 中无法交互输入！Read-Host 会卡住或失败
-        # 所以半自动部署通常直接执行，或通过 when: manual 确认
-        # 这里我们跳过交互，直接执行（因为 manual 已经是人工触发）
         Write-Host "💡 手动作业已触发，自动继续部署..." -ForegroundColor Green
         
         # 1. 备份
         Write-Host "`n1. 备份现有代码..." -ForegroundColor Yellow
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "$user@$server" "cd '$deployPath' && tar -czf backup_$timestamp.tar.gz backend frontend 2>/dev/null || echo '首次部署，跳过备份'"
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}' && tar -czf backup_${timestamp}.tar.gz backend frontend 2>/dev/null || echo '首次部署，跳过备份'"
         
         # 2. 上传后端
         if (Test-Path "back") {
           Write-Host "`n2. 上传后端代码..." -ForegroundColor Yellow
-          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL back/* "$user@$server:$deployPath/backend/"
+          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL back/* "${user}@${server}:${deployPath}/backend/"
           Write-Host "✅ 后端上传完成" -ForegroundColor Green
         }
         
         # 3. 上传前端
         if (Test-Path "front") {
           Write-Host "`n3. 上传前端代码..." -ForegroundColor Yellow
-          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL front/* "$user@$server:$deployPath/frontend/"
+          scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL front/* "${user}@${server}:${deployPath}/frontend/"
           Write-Host "✅ 前端上传完成" -ForegroundColor Green
         }
         
-        # 4. 安装依赖并重启（可选：也可留到手动）
+        # 4. 安装依赖并重启
         Write-Host "`n4. 安装依赖并重启服务..." -ForegroundColor Yellow
-        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "$user@$server" "cd '$deployPath/backend' && npm install --production && pm2 restart all"
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "${user}@${server}" "cd '${deployPath}/backend' && npm install --production && pm2 restart all"
         
         Write-Host "`n✅ 部署完成！" -ForegroundColor Green
-        Write-Host "🌍 访问地址: http://$server"
+        Write-Host "🌍 访问地址: http://${server}"
         
       } else {
         Write-Host "❌ 未检测到 SSH 私钥，仅显示手动命令" -ForegroundColor Red
         Write-Host "`n🔧 手动部署命令：" -ForegroundColor Cyan
         Write-Host "================================="
         Write-Host "# 备份"
-        Write-Host "ssh $user@$server 'cd $deployPath && tar -czf backup_$timestamp.tar.gz backend frontend'"
+        Write-Host "ssh ${user}@${server} 'cd ${deployPath} && tar -czf backup_${timestamp}.tar.gz backend frontend'"
         Write-Host ""
         Write-Host "# 上传后端"
-        Write-Host "scp -r back/* $user@$server`:$deployPath/backend/"
+        Write-Host "scp -r back/* ${user}@${server}:${deployPath}/backend/"
         Write-Host ""
         Write-Host "# 上传前端"
-        Write-Host "scp -r front/* $user@$server`:$deployPath/frontend/"
+        Write-Host "scp -r front/* ${user}@${server}:${deployPath}/frontend/"
         Write-Host ""
         Write-Host "# 安装依赖并重启"
-        Write-Host "ssh $user@$server 'cd $deployPath/backend && npm install --production && pm2 restart all'"
+        Write-Host "ssh ${user}@${server} 'cd ${deployPath}/backend && npm install --production && pm2 restart all'"
         Write-Host "================================="
       }
   tags:
