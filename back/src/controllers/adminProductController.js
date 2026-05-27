@@ -2,6 +2,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const redisClient = require('../utils/redis'); // 导入Redis客户端
+const { toStoredImages } = require('../utils/productImages');
 
 /**
  * 清除商品相关缓存
@@ -104,6 +105,7 @@ const createProduct = async (req, res) => {
       })
     }
 
+    const mainImage = imageUrl ? String(imageUrl).trim() : ''
     const product = await prisma.product.create({
       data: {
         name,
@@ -111,10 +113,15 @@ const createProduct = async (req, res) => {
         stock: parseInt(stock),
         description: description || '',
         category: category || '',
-        imageUrl: imageUrl || '',
+        image: mainImage,
+        images: toStoredImages(mainImage),
+        categoryId: req.body.categoryId || null,
+        sellerId: req.body.sellerId || null,
         status: 'active'
       }
     })
+
+    await clearProductCache(product.id)
 
     res.json({
       success: true,
@@ -147,17 +154,24 @@ const updateProduct = async (req, res) => {
       })
     }
 
+    const updateData = {
+      ...(name && { name }),
+      ...(price !== undefined && { price: parseFloat(price) }),
+      ...(stock !== undefined && { stock: parseInt(stock) }),
+      ...(description !== undefined && { description }),
+      ...(category !== undefined && { category }),
+      ...(req.body.categoryId !== undefined && { categoryId: req.body.categoryId || null }),
+      ...(status && { status })
+    }
+    if (imageUrl !== undefined) {
+      const mainImage = imageUrl ? String(imageUrl).trim() : ''
+      updateData.image = mainImage
+      updateData.images = toStoredImages(mainImage)
+    }
+
     const updatedProduct = await prisma.product.update({
       where: { id: parseInt(id) },
-      data: {
-        ...(name && { name }),
-        ...(price !== undefined && { price: parseFloat(price) }),
-        ...(stock !== undefined && { stock: parseInt(stock) }),
-        ...(description !== undefined && { description }),
-        ...(category !== undefined && { category }),
-        ...(imageUrl !== undefined && { imageUrl }),
-        ...(status && { status })
-      }
+      data: updateData
     })
 
     await clearProductCache(parseInt(id));
@@ -268,11 +282,26 @@ const updateProductStatus = async (req, res) => {
     })
   }
 }
+// 获取单个商品详情
+const getProductDetail = async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id)
+    const product = await prisma.product.findUnique({ where: { id: productId } })
+    if (!product) {
+      return res.status(404).json({ success: false, message: '商品不存在' })
+    }
+    res.json({ success: true, data: { product } })
+  } catch (error) {
+    console.error('获取商品详情失败:', error)
+    res.status(500).json({ success: false, message: '获取商品详情失败' })
+  }
+}
 
 module.exports = {
   getProducts,
   createProduct,
   updateProduct,
   deleteProduct,
-  updateProductStatus
+  updateProductStatus,
+  getProductDetail
 }

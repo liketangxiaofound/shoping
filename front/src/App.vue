@@ -1,41 +1,34 @@
 <script setup>
-
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { watch } from 'vue'
+import { useUserStore } from '@/store/user'
+import MobileBottomNav from '@/components/MobileBottomNav.vue'
 
 const route = useRoute()
-watch(
-  () => route.path,
-  (newPath) => {
-    // console.log('🎯 当前匹配的路由:', newPath)
-    // console.log('🧩 matched:', route.matched)
-  },
-  { immediate: true }
-)
+const userStore = useUserStore()
+
+const showMobileNav = computed(() => {
+  if (!userStore.user || userStore.user.role !== 'customer') return false
+  const p = route.path
+  const customerPaths = ['/home', '/cart', '/checkout', '/orders', '/product']
+  return customerPaths.some((prefix) => p === prefix || p.startsWith(prefix + '/'))
+})
+
+const appClass = computed(() => ({
+  'has-mobile-nav': showMobileNav.value
+}))
 </script>
 
 <template>
-  
-  <router-view></router-view>
+  <div id="app-root" :class="appClass">
+    <router-view />
+    <MobileBottomNav v-if="showMobileNav" />
+  </div>
 </template>
 
 <style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-#app {
+#app-root {
+  min-height: 100vh;
   width: 100%;
-  margin: 0 auto;
-  padding: 2rem;
-  box-sizing: border-box;
 }
 </style>

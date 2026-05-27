@@ -2,11 +2,11 @@ import {defineStore} from 'pinia'
 import { ref,computed } from 'vue'
 
 export const useUserStore = defineStore('user',()=>{
-    const token =ref(localStorage .getItem('token') || null)
-    const user =ref(localStorage.getItem('user')||null)
-    const isLoggedIn= ref(false)
+    const token = ref(localStorage.getItem('token') || null)
+    const user = ref(null)
+    const isLoggedIn = ref(false)
 
-    const userId= computed(()=>user.value?.id || null)
+    const userId = computed(() => user.value?.id || null)
 
     const login=(userData)=>{
         console.log('登录操作');
@@ -65,9 +65,6 @@ export const useUserStore = defineStore('user',()=>{
     // 状态
     token,
     user,
-    isLoggedIn,
-    
-    // 计算属性
     isLoggedIn,
     
     userId,

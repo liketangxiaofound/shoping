@@ -1,143 +1,49 @@
 // routes/admin.js
 const express = require('express')
 const router = express.Router()
-const adminMiddleware = require('../middleware/admin')
-const adminProductController = require('../controllers/adminProductController')
 const adminController = require('../controllers/adminController')
-const orderController = require('../controllers/orderController')
+const adminSellerController = require('../controllers/adminSellerController')
+const adminAnalyticsController = require('../controllers/adminAnalyticsController')
+const antiCrawlerController = require('../controllers/antiCrawlerController')
+const dataExportImportController = require('../controllers/dataExportImportController')
+const multer = require('multer')
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } })
 const { authenticateJWT, requireAdmin } = require('../middleware/auth')
-const { PrismaClient } = require('@prisma/client')
-const prisma = new PrismaClient()
 
-// 应用管理员中间件（使用统一的认证和权限检查）
+// 仅对管理员开放
 router.use(authenticateJWT, requireAdmin)
 
-// ========== 商品管理路由 ==========
-router.get('/products', adminProductController.getProducts)
-router.post('/products', adminProductController.createProduct)
-// router.get('/products/:id', adminProductController.getProductDetail) // 添加获取单个商品详情
-router.put('/products/:id', adminProductController.updateProduct)
-router.delete('/products/:id', adminProductController.deleteProduct)
-router.put('/products/:id/status', adminProductController.updateProductStatus)
-router.put('/orders/:id/ship',orderController.shipOrder)
-
-// ========== 统计路由 ==========
+// ========== 管理后台：统计与销售人员管理（保留的精简接口） ==========
 router.get('/stats/dashboard', adminController.getDashboardStats)
 
-// ========== 订单管理路由 ==========
-// 获取所有订单
-router.get('/orders', async (req, res) => {
-  try {
-    const { page = 1, limit = 10, status, userId } = req.query;
-    
-    const orders = await prisma.order.findMany({
-      where: {
-        ...(status && status !== 'all' ? { status } : {}),
-        ...(userId ? { userId: parseInt(userId) } : {})
-      },
-      include: {
-        orderItems: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                image: true
-              }
-            }
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (parseInt(page) - 1) * parseInt(limit),
-      take: parseInt(limit)
-    });
+// 销售人员管理（ID 管理、添加/删除、密码重置）
+router.get('/sellers', adminSellerController.getSellers)
+router.get('/sellers/performance', adminSellerController.getSellerPerformance)
+router.post('/sellers', adminSellerController.createSeller)
+router.delete('/sellers/:id', adminSellerController.deleteSeller)
+router.put('/sellers/:id/reset-password', adminSellerController.resetSellerPassword)
+router.get('/reports/sales', adminSellerController.getSalesReport)
 
-    const total = await prisma.order.count({
-      where: {
-        ...(status && status !== 'all' ? { status } : {}),
-        ...(userId ? { userId: parseInt(userId) } : {})
-      }
-    });
+// 3.2 数据采集概览（验收 / 监控）
+router.get('/analytics/collection', adminAnalyticsController.getCollectionSummary)
+router.get('/analytics/user-profiles/overview', adminAnalyticsController.getUserProfileOverview)
+router.get('/analytics/user-profiles', adminAnalyticsController.getUserProfiles)
+router.get('/analytics/user-profiles/:userId', adminAnalyticsController.getUserProfileDetail)
+router.get('/analytics/sales-trend', adminAnalyticsController.getSalesTrend)
+router.get('/analytics/sales-trend-chart', adminAnalyticsController.getSalesTrendChart)
+router.get('/analytics/sales-anomalies', adminAnalyticsController.getSalesAnomalies)
+router.get('/analytics/sales-ranking', adminAnalyticsController.getSalesRanking)
 
-    res.json({
-      success: true,
-      data: {
-        orders,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
+// 3.4 反爬虫监控
+router.get('/analytics/data-screen', adminAnalyticsController.getDataScreen)
 
-  } catch (error) {
-    console.error('获取订单列表错误:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取订单列表失败'
-    });
-  }
-})
+// 3.4 数据导入/导出
+router.get('/data-export/:type', dataExportImportController.adminExport)
+router.get('/data-import/template', dataExportImportController.downloadTemplate)
+router.post('/data-import/products', upload.single('file'), dataExportImportController.importProducts)
 
-// 发货接口
-router.post('/orders/:id/ship', orderController.shipOrder)
-
-// 获取订单详情
-router.get('/orders/:id', async (req, res) => {
-  try {
-    const order = await prisma.order.findUnique({
-      where: { id: parseInt(req.params.id) },
-      include: {
-        orderItems: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                image: true,
-                price: true
-              }
-            }
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            username: true,
-            email: true
-          }
-        }
-      }
-    })
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: '订单不存在'
-      })
-    }
-
-    res.json({
-      success: true,
-      data: { order }
-    })
-  } catch (error) {
-    console.error('获取订单详情错误:', error)
-    res.status(500).json({
-      success: false,
-      message: '获取订单详情失败'
-    })
-  }
-})
+router.get('/anti-crawler/stats', antiCrawlerController.getStats)
+router.get('/anti-crawler/events', antiCrawlerController.getEvents)
+router.post('/anti-crawler/unban/:ip', antiCrawlerController.unban)
 
 module.exports = router

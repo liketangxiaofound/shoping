@@ -4,81 +4,8 @@ const request = require('supertest');
 const app = require('../src/app');
 
 async function testShipment() {
-  console.log('🚀 开始测试发货流程...\n');
-
-  // 1. 管理员登录获取token
-  console.log('1️⃣ 管理员登录...');
-  const loginRes = await request(app)
-    .post('/api/auth/login')
-    .send({
-      username: 'admin', // 确保这是正确的管理员用户名
-      password: '123456' // 确保这是正确的密码
-    });
-
-  console.log('登录响应:', {
-    status: loginRes.status,
-    success: loginRes.body.success,
-    message: loginRes.body.message
-  });
-
-  if (!loginRes.body.success) {
-    console.log('❌ 管理员登录失败:', loginRes.body.message);
-    console.log('请确保管理员账户存在且密码正确');
-    return;
-  }
-
-  const adminToken = loginRes.body.data.token;
-  console.log('✅ 管理员登录成功, Token:', adminToken.substring(0, 20) + '...\n');
-
-  // 2. 获取待发货订单
-  console.log('2️⃣ 获取待发货订单...');
-  const ordersRes = await request(app)
-    .get('/api/admin/orders?status=paid')
-    .set('Authorization', `Bearer ${adminToken}`);
-
-  console.log('获取订单响应状态:', ordersRes.status);
-  console.log('获取订单响应数据:', JSON.stringify(ordersRes.body, null, 2));
-
-  if (!ordersRes.body.success) {
-    console.log('❌ 获取订单失败:', ordersRes.body.message);
-    return;
-  }
-
-  if (!ordersRes.body.data || !ordersRes.body.data.orders) {
-    console.log('❌ 订单数据格式错误');
-    return;
-  }
-
-  if (ordersRes.body.data.orders.length === 0) {
-    console.log('⚠️ 没有找到待发货的订单');
-    
-    // 如果没有订单，可以创建一个测试订单
-    console.log('尝试创建测试订单...');
-    await createTestOrderAndShip(adminToken);
-    return;
-  }
-
-  const order = ordersRes.body.data.orders[0];
-  console.log(`📦 找到待发货订单: ${order.orderNo} (ID: ${order.id})\n`);
-
-  // 3. 发货
-  console.log('3️⃣ 执行发货操作...');
-  const shipRes = await request(app)
-    .post(`/api/admin/orders/${order.id}/ship`)
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      trackingNumber: 'SF1234567890'
-    });
-
-  console.log('发货响应:', JSON.stringify(shipRes.body, null, 2));
-
-  if (shipRes.body.success) {
-    console.log('\n✅ 发货成功');
-    console.log('运单号:', shipRes.body.data.order.trackingNumber);
-    console.log('发货时间:', shipRes.body.data.order.shippedAt);
-  } else {
-    console.log('\n❌ 发货失败:', shipRes.body.message);
-  }
+  console.log('⚠️ 已移除后端 admin 订单管理接口，跳过发货流程测试。')
+  return
 }
 
 // 创建测试订单的函数

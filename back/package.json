@@ -7,6 +7,7 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "db:seed": "node scripts/seed.js",
+    "db:seed-images": "node scripts/generate-and-upload-product-images.js",
     "lint": "eslint . --ext .js || echo '代码检查完成'",
     "lint:quick": "echo '跳过详细检查' && exit 0"
   },

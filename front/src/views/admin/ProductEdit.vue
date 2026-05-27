@@ -209,7 +209,7 @@ const handleSubmit = async () => {
     
     if (response.success) {
       ElMessage.success(isEdit.value ? '商品更新成功' : '商品创建成功')
-      router.push('/admin/products')
+      router.push('/admin/dashboard')
     }
   } catch (error) {
     console.error('保存商品失败:', error)

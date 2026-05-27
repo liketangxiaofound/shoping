@@ -2,6 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
+const antiCrawlerController = require('../controllers/antiCrawlerController');
+
+// 蜜罐（隐藏接口，仅供侦测爬虫扫描）
+router.get('/export-all-secret', antiCrawlerController.honeypotExport);
+router.get('/catalog.json', antiCrawlerController.honeypotExport);
 
 // 分类列表
 router.get('/categories', productController.getCategories);

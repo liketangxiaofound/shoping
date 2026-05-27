@@ -11,6 +11,11 @@ const cartRoutes=require('./routes/cartRoutes')
 const authRoutes=require('./routes/authRoutes')
 const orderRoutes=require('./routes/orderRoutes')
 const adminRoutes=require('./routes/admin')
+const sellerRoutes=require('./routes/seller')
+const analyticsRoutes=require('./routes/analytics')
+const recommendationRoutes=require('./routes/recommendation')
+const antiCrawlerRoutes=require('./routes/antiCrawler')
+const antiCrawlerMiddleware=require('./middleware/antiCrawler')
 // 初始化OSS服务
 const OSSService = require('./utils/ossService')
 
@@ -22,14 +27,12 @@ app.use(cors())
 app.use(express.json({ limit: '10mb'}))
 app.use(express.urlencoded({ extended: true }))
 
+// 3.4 反爬虫（商品/推荐读接口）
+app.use(antiCrawlerMiddleware)
 
 // 基础路由
 app.get('/', (req, res) => {
-  res.json({ 
-    message: '购物网站后端API',
-    version: '1.0.0',
-    timestamp: new Date().toISOString()
-  })
+  res.redirect('http://localhost:3001/login')
 })
 
 app.get('/health', async (req, res) => {
@@ -57,6 +60,10 @@ app.use('/api/upload',uploadRoutes)
 app.use('/api/carts',cartRoutes)
 app.use('/api/orders',orderRoutes)
 app.use('/api/admin',adminRoutes)
+app.use('/api/seller', sellerRoutes)
+app.use('/api/analytics', analyticsRoutes)
+app.use('/api/recommendations', recommendationRoutes)
+app.use('/api/anti-crawler', antiCrawlerRoutes)
 
 
 // 404 处理

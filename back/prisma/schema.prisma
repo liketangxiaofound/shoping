@@ -15,13 +15,18 @@ enum ProductStatus {
   draft
 }
 
+enum UserRole {
+  admin
+  seller
+  customer
+}
 
 model User {
   id        Int      @id @default(autoincrement())
   username  String   @unique
   password  String   // 存储加密后的密码
   email     String?  @unique
-  role      String   @default("user") // user/admin
+  role      UserRole @default(customer) // admin/seller/customer
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -29,6 +34,12 @@ model User {
   // 关联关系
   cartItems CartItem[]
   orders    Order[]
+  products  Product[]
+  activityLogs UserActivityLog[]
+  loginLogs LoginLog[]
+  browseLogs BrowseBehaviorLog[]
+  purchaseRecords PurchaseRecord[]
+  operationLogs OperationLog[]
 }
 
 model Product {
@@ -37,8 +48,13 @@ model Product {
   price       Float
   stock       Int      @default(0)
   description String?
-  image       String?  // 商品图片URL
+  image       String?  // 商品主图 URL
+  images      Json?    // 商品图集 string[]，详情页轮播
   category    String?
+  categoryId  Int?
+  categoryRef Category? @relation(fields: [categoryId], references: [id])
+  sellerId    Int?
+  seller      User?     @relation(fields: [sellerId], references: [id])
   createdAt   DateTime @default(now())
   
   
@@ -46,6 +62,30 @@ model Product {
   // 关联关系
   cartItems CartItem[]
   orderItems OrderItem[]
+  activityLogs UserActivityLog[]
+  browseLogs BrowseBehaviorLog[]
+  purchaseRecords PurchaseRecord[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  products  Product[]
+}
+
+model UserActivityLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  detail    String?
+  productId Int?
+  orderId   Int?
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product? @relation(fields: [productId], references: [id])
+  order   Order?  @relation(fields: [orderId], references: [id])
 }
 
 model CartItem {
@@ -67,6 +107,8 @@ model Order {
   
   user      User       @relation(fields: [userId], references: [id])
   orderItems OrderItem[]
+  activityLogs UserActivityLog[]
+  purchaseRecords PurchaseRecord[]
 
   orderNo     String   @unique  // 订单号，用于展示给用户
   address     Json?             // 收货地址（JSON格式存储）
@@ -90,4 +132,99 @@ model OrderItem {
   productId Int
   order     Order   @relation(fields: [orderId], references: [id])
   product   Product @relation(fields: [productId], references: [id])
+}
+
+// ========== 3.2 大数据数据采集 ==========
+
+/// 登录信息：时间、IP（用户 / 销售人员 / 管理者）
+model LoginLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  username  String
+  role      UserRole
+  ipAddress String?
+  loginAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, loginAt])
+  @@index([role, loginAt])
+  @@index([loginAt])
+}
+
+/// 浏览行为：商品类别、停留时长（秒）
+model BrowseBehaviorLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  productId    Int?
+  category     String?
+  dwellSeconds Int      @default(0)
+  ipAddress    String?
+  browsedAt    DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([userId, browsedAt])
+  @@index([category, browsedAt])
+  @@index([browsedAt])
+}
+
+/// 购买记录：商品类别、日期、单价、数量
+model PurchaseRecord {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  orderId      Int
+  productId    Int
+  category     String?
+  unitPrice    Float
+  quantity     Int
+  purchaseDate DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purchaseDate])
+  @@index([category, purchaseDate])
+  @@index([orderId])
+  @@index([purchaseDate])
+}
+
+/// 销售人员 & 管理者操作日志：操作时间、内容、IP、账号
+model OperationLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  username   String
+  role       UserRole
+  content    String
+  ipAddress  String?
+  operatedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, operatedAt])
+  @@index([role, operatedAt])
+  @@index([operatedAt])
+}
+
+// ========== 3.4 反爬虫侦测 ==========
+
+/// 爬虫/异常访问事件
+model CrawlerEvent {
+  id        Int      @id @default(autoincrement())
+  ipAddress String
+  userAgent String?
+  path      String?
+  method    String?
+  reason    String   // rate_limit | burst | suspicious_ua | honeypot | no_token
+  action    String   // warn | block | captcha
+  score     Int      @default(1)
+  userId    Int?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([ipAddress, createdAt])
+  @@index([reason, createdAt])
+  @@index([createdAt])
 }

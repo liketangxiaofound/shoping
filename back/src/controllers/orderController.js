@@ -63,7 +63,7 @@ const simulatePayment = async (req, res) => {
 
     console.log(`💳 用户 ${userId} 支付订单 ${orderId}`);
 
-    const result = await orderService.processSimulatedPayment(orderId, paymentMethod);
+    const result = await orderService.processSimulatedPayment(orderId, userId, paymentMethod);
 
     if (result.success) {
       // 发送支付成功邮件

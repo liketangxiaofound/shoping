@@ -2,7 +2,7 @@ const redis = require('redis');
 
 // 创建 Redis 客户端
 const redisClient = redis.createClient({
-  url: 'redis://localhost:6379'
+  url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
 
 // 连接 Redis

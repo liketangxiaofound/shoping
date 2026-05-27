@@ -26,7 +26,7 @@
         </div>
         
         <div class="user-section">
-          <span v-if="userStore.user" class="welcome-text">欢迎，{{ userStore.user.username }}</span>
+          <span v-if="userStore.user" class="welcome-text hide-on-mobile">欢迎，{{ userStore.user.username }}</span>
 
             
            <!-- 管理员入口 - 简化版 -->
@@ -40,15 +40,24 @@
                 <el-dropdown-item @click="$router.push('/admin/dashboard')">
                   <el-icon><DataAnalysis /></el-icon> 仪表板
                 </el-dropdown-item>
-                <el-dropdown-item @click="$router.push('/admin/products')">
-                  <el-icon><Goods /></el-icon> 商品管理
+                <el-dropdown-item @click="$router.push('/admin/sellers')">
+                  <el-icon><User /></el-icon> 销售人员管理
                 </el-dropdown-item>
-                <el-dropdown-item @click="$router.push('/admin/orders')">
-                  <el-icon><List /></el-icon> 订单管理
+                <el-dropdown-item @click="$router.push('/admin/reports/sales')">
+                  <el-icon><DataAnalysis /></el-icon> 销售报表
                 </el-dropdown-item>
-                <!-- <el-dropdown-item @click="$router.push('/admin/users')">
-                  <el-icon><User /></el-icon> 用户管理
-                </el-dropdown-item> -->
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-dropdown v-else-if="userStore.user?.role === 'seller'" class="seller-dropdown">
+            <span class="seller-link">
+              <el-icon><ShoppingBag /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="$router.push('/seller')">
+                  <el-icon><ShoppingBag /></el-icon> 卖家中心
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -75,20 +84,49 @@
         </div>
         
         <div class="filter-controls" v-if="!searchKeyword">
-          <el-select v-model="sortBy" placeholder="排序方式" size="small" @change="handleSortChange">
-            <el-option label="最新上架" value="createdAt_desc" />
-            <el-option label="价格从低到高" value="price_asc" />
-            <el-option label="价格从高到低" value="price_desc" />
-          </el-select>
-          
-          <el-select v-model="categoryFilter" placeholder="全部分类" size="small" clearable @change="handleCategoryChange">
-            <el-option 
-              v-for="category in categories" 
-              :key="category" 
-              :label="category" 
-              :value="category" 
-            />
-          </el-select>
+          <el-dropdown trigger="click" @command="handleSortCommand">
+            <el-button size="small" class="filter-trigger">
+              {{ sortLabel }}
+              <el-icon class="filter-trigger-icon"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="opt in SORT_OPTIONS"
+                  :key="opt.value"
+                  :command="opt.value"
+                  :class="{ 'is-active': sortBy === opt.value }"
+                >
+                  {{ opt.label }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+
+          <el-dropdown trigger="click" @command="handleCategoryCommand">
+            <el-button size="small" class="filter-trigger">
+              {{ categoryLabel }}
+              <el-icon class="filter-trigger-icon"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  command=""
+                  :class="{ 'is-active': !categoryFilter }"
+                >
+                  全部分类
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-for="category in categories"
+                  :key="category"
+                  :command="category"
+                  :class="{ 'is-active': categoryFilter === category }"
+                >
+                  {{ category }}
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
 
@@ -169,6 +207,13 @@
         </el-empty>
       </div>
 
+      <ProductRecommendStrip
+        v-if="homeRecommend.length"
+        :title="recommendTitle"
+        :subtitle="recommendSubtitle"
+        :products="homeRecommend"
+      />
+
       <!-- 分页控件 -->
       <div v-if="totalPages > 1" class="pagination-container">
         <el-pagination
@@ -188,14 +233,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search ,ShoppingCart,Document,
-   Setting,  // 添加
-  DataAnalysis,  // 添加
-  Goods,  // 添加
-  List,  // 添加
-  User 
-} from '@element-plus/icons-vue'
+import { Search, ShoppingCart, Document, Setting, DataAnalysis, User, ShoppingBag, ArrowDown } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import ProductRecommendStrip from '@/components/ProductRecommendStrip.vue'
+
+const homeRecommend = ref([])
+const recommendTitle = ref('为您推荐')
+const recommendSubtitle = ref('')
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -206,9 +250,21 @@ const loading = ref(false)
 const searchKeyword = ref('')
 const currentPage = ref(1)
 const pageSize = ref(12)
+const SORT_OPTIONS = [
+  { label: '最新上架', value: 'createdAt_desc' },
+  { label: '价格从低到高', value: 'price_asc' },
+  { label: '价格从高到低', value: 'price_desc' }
+]
+
 const sortBy = ref('createdAt_desc')
 const categoryFilter = ref('')
 const categories = ref([])
+
+const sortLabel = computed(() => {
+  return SORT_OPTIONS.find((o) => o.value === sortBy.value)?.label || '最新上架'
+})
+
+const categoryLabel = computed(() => categoryFilter.value || '全部分类')
 
 // 计算属性
 const displayedProducts = computed(() => {
@@ -282,14 +338,21 @@ const loadCategories = async () => {
 }
 
 // 获取商品图片URL
+const IMAGE_FALLBACK =
+  'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800&q=80'
+
 const getProductImageUrl = (product) => {
-  // 优先使用后端返回的imageUrl，如果没有则使用image字段
-  return product.imageUrl || product.image || 'https://via.placeholder.com/300x200/f0f0f0/969696?text=商品图片'
+  const url = product?.imageUrl || product?.image
+  if (url) return url
+  const gallery = product?.images
+  if (Array.isArray(gallery) && gallery[0]) return gallery[0]
+  return IMAGE_FALLBACK
 }
 
 const handleImageError = (event) => {
-  console.warn('图片加载失败，使用占位图')
-  event.target.src = 'https://via.placeholder.com/300x200/f0f0f0/969696?text=图片加载失败'
+  if (event.target.dataset.fallback === '1') return
+  event.target.dataset.fallback = '1'
+  event.target.src = IMAGE_FALLBACK
 }
 
 // 其他方法保持不变...
@@ -355,9 +418,19 @@ const handlePageChange = (page) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+const handleSortCommand = (command) => {
+  sortBy.value = command
+  handleSortChange()
+}
+
 const handleSortChange = () => {
   currentPage.value = 1
   loadProducts()
+}
+
+const handleCategoryCommand = (command) => {
+  categoryFilter.value = command
+  handleCategoryChange()
 }
 
 const handleCategoryChange = () => {
@@ -396,9 +469,26 @@ const getMockProducts = () => {
   }))
 }
 
-// 生命周期
+const fetchHomeRecommendations = async () => {
+  try {
+    const res = await request.get('/api/recommendations/home', { params: { limit: 12 } })
+    if (res.success) {
+      homeRecommend.value = res.data.products || []
+      if (res.data.type === 'collaborative') {
+        recommendTitle.value = '协同过滤 · 为您推荐'
+        recommendSubtitle.value = '根据与您兴趣相似的用户购买行为智能推荐'
+      } else {
+        recommendTitle.value = '热销推荐'
+        recommendSubtitle.value = '登录后可获得个性化协同过滤推荐'
+      }
+    }
+  } catch {
+  }
+}
+
 onMounted(() => {
   loadProducts()
+  fetchHomeRecommendations()
 })
 </script>
 
@@ -462,6 +552,14 @@ onMounted(() => {
   min-height: calc(100vh - 80px);
 }
 
+.main-content :deep(.recommend-strip) {
+  margin: 32px 0 24px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
 .content-header {
   margin-bottom: 30px;
   display: flex;
@@ -495,6 +593,21 @@ onMounted(() => {
 .filter-controls {
   display: flex;
   gap: 15px;
+  align-items: center;
+}
+
+.filter-trigger {
+  min-width: 120px;
+  justify-content: space-between;
+}
+
+.filter-trigger-icon {
+  margin-left: 6px;
+}
+
+.filter-controls :deep(.el-dropdown-menu__item.is-active) {
+  color: #409eff;
+  font-weight: 600;
 }
 
 .products-grid {
@@ -809,6 +922,21 @@ onMounted(() => {
 @media (max-width: 480px) {
   .products-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+.hide-on-mobile {
+  display: inline;
+}
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none;
+  }
+  .user-section .el-button span {
+    display: none;
+  }
+  .user-section .el-button {
+    padding: 8px;
   }
 }
 

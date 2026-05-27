@@ -22,13 +22,6 @@
           </div>
         </div>
 
-        <div class="payment-methods" v-if="!isPaid">
-          <h3>选择支付方式</h3>
-          <el-radio-group v-model="paymentMethod" size="large">
-            <el-radio-button label="simulated">模拟支付</el-radio-button>
-          </el-radio-group>
-        </div>
-
         <div class="payment-actions" v-if="!isPaid">
           <el-button 
             @click="$router.push('/orders')" 
@@ -143,7 +136,11 @@ const handlePay = async () => {
     }
   } catch (error) {
     console.error('支付失败:', error)
-    ElMessage.error('支付失败，请重试')
+    const msg = error.response?.data?.message || error.message || '支付失败，请重试'
+    ElMessage.error(msg)
+    if (msg.includes('无法支付') || msg.includes('不存在')) {
+      fetchOrder()
+    }
   } finally {
     paying.value = false
   }
@@ -251,21 +248,8 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.payment-methods {
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.payment-methods h3 {
-  margin: 0 0 15px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  text-align: center;
-}
-
 .payment-actions {
+  margin-top: 8px;
   display: flex;
   gap: 15px;
   justify-content: space-between;

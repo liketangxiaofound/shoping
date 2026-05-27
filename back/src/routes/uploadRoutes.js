@@ -43,9 +43,9 @@ const handleUploadError = (error, req, res, next) => {
 
 // 路由定义
 router.get('/config', uploadController.getUploadConfig)
-router.post('/image', upload.single('image'), handleUploadError, uploadController.uploadImage)
+router.post('/image', upload.any(), handleUploadError, uploadController.uploadImage)
 router.post('/images', upload.array('images', 10), handleUploadError, uploadController.uploadMultiple)
-router.post('/product', upload.single('image'), handleUploadError, uploadController.uploadProductImage)
+router.post('/product', upload.any(), handleUploadError, uploadController.uploadProductImage)
 router.delete('/image', uploadController.deleteImage)
 
 module.exports = router

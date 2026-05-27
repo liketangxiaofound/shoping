@@ -1,4 +1,9 @@
 import axios from 'axios'
+import {
+  getCrawlerToken,
+  promptCrawlerVerify,
+  isCrawlerBlockedResponse
+} from '@/utils/crawlerGuard'
 
 const request = axios.create({
   baseURL: '/',
@@ -11,6 +16,10 @@ request.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    const crawlerToken = getCrawlerToken()
+    if (crawlerToken) {
+      config.headers['X-Crawler-Token'] = crawlerToken
+    }
     return config
   },
   (error) => {
@@ -22,9 +31,21 @@ request.interceptors.response.use(
   (response) => {
     return response.data
   },
-  (error) => {
+  async (error) => {
     if (error.response) {
       const { status, config } = error.response
+
+      // 3.4 反爬虫：需人机验证时弹窗，通过后重试原请求
+      if (isCrawlerBlockedResponse(error) && config && !config.__crawlerRetried) {
+        const msg = error.response.data?.message || '请完成人机验证'
+        const ok = await promptCrawlerVerify(msg)
+        if (ok) {
+          config.__crawlerRetried = true
+          config.headers = config.headers || {}
+          config.headers['X-Crawler-Token'] = getCrawlerToken()
+          return request(config)
+        }
+      }
 
       // ✅ 关键：如果是登录接口，不在此处处理 401！交给调用方处理
       if (config.url === '/api/user/login') {

@@ -2,9 +2,8 @@
 <template>
   <div class="admin-dashboard">
     <h2 class="page-title">数据概览</h2>
-    
-    <!-- 统计卡片 -->
-    <div class="stats-cards">
+
+    <div class="stats-cards" v-loading="loading">
       <el-card class="stat-card">
         <div class="stat-content">
           <div class="stat-icon revenue">
@@ -16,7 +15,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="stat-card">
         <div class="stat-content">
           <div class="stat-icon orders">
@@ -28,7 +27,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="stat-card">
         <div class="stat-content">
           <div class="stat-icon products">
@@ -40,7 +39,7 @@
           </div>
         </div>
       </el-card>
-      
+
       <el-card class="stat-card">
         <div class="stat-content">
           <div class="stat-icon users">
@@ -54,37 +53,22 @@
       </el-card>
     </div>
 
-    <!-- 最近订单 -->
-    <el-card class="recent-orders">
-      <template #header>
-        <div class="card-header">
-          <h3>最近订单</h3>
-          <el-button type="primary" text @click="$router.push('/admin/orders')">查看全部</el-button>
-        </div>
-      </template>
-      
-      <el-table :data="recentOrders" v-loading="loading">
-        <el-table-column prop="orderNo" label="订单号" width="180" />
-        <el-table-column prop="user.username" label="用户" width="120" />
-        <el-table-column prop="totalPrice" label="金额" width="100">
-          <template #default="{ row }">¥{{ row.totalPrice.toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusTagType(row.status)" size="small">
-              {{ getStatusText(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createdAt" label="下单时间" width="180">
-          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="100">
-          <template #default="{ row }">
-            <el-button size="small" @click="viewOrderDetail(row.id)">查看</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+    <el-card class="quick-links">
+      <div class="section-title">管理功能</div>
+      <el-space wrap>
+        <el-button type="primary" @click="router.push('/admin/sellers')">销售人员管理</el-button>
+        <el-button @click="router.push('/admin/sellers/performance')">销售业绩监控</el-button>
+        <el-button @click="router.push('/admin/reports/sales')">销售统计报表</el-button>
+        <el-button @click="router.push('/admin/analytics/collection')">数据采集概览</el-button>
+        <el-button @click="router.push('/admin/analytics/user-profiles')">用户画像</el-button>
+        <el-button @click="router.push('/admin/analytics/sales-trend-chart')">销售趋势图</el-button>
+        <el-button @click="router.push('/admin/analytics/sales-trend')">销售趋势预测</el-button>
+        <el-button type="warning" @click="router.push('/admin/analytics/sales-anomalies')">销售异常监控</el-button>
+        <el-button @click="router.push('/admin/analytics/sales-ranking')">销售排行榜</el-button>
+        <el-button type="danger" plain @click="router.push('/admin/anti-crawler')">反爬虫监控</el-button>
+        <el-button type="success" plain @click="router.push('/admin/data-screen')">数据可视化大屏</el-button>
+        <el-button @click="router.push('/admin/data-io')">数据导入导出</el-button>
+      </el-space>
     </el-card>
   </div>
 </template>
@@ -103,35 +87,8 @@ const stats = ref({
   totalProducts: 0,
   totalUsers: 0
 })
-const recentOrders = ref([])
 const loading = ref(false)
 
-// 状态映射
-const statusTextMap = {
-  pending: '待支付',
-  paid: '已支付',
-  shipped: '已发货',
-  delivered: '已收货',
-  cancelled: '已取消'
-}
-
-const statusTagTypeMap = {
-  pending: 'warning',
-  paid: 'primary',
-  shipped: 'info',
-  delivered: 'success',
-  cancelled: 'danger'
-}
-
-const getStatusText = (status) => statusTextMap[status] || '未知'
-const getStatusTagType = (status) => statusTagTypeMap[status] || 'info'
-
-const formatDate = (dateString) => {
-  if (!dateString) return ''
-  return new Date(dateString).toLocaleString('zh-CN')
-}
-
-// 获取统计数据
 const fetchStats = async () => {
   loading.value = true
   try {
@@ -147,28 +104,8 @@ const fetchStats = async () => {
   }
 }
 
-// 获取最近订单
-const fetchRecentOrders = async () => {
-  try {
-    const response = await request.get('/api/admin/orders', {
-      params: { page: 1, limit: 5 }
-    })
-    if (response.success) {
-      recentOrders.value = response.data.orders || []
-    }
-  } catch (error) {
-    console.error('获取最近订单失败:', error)
-  }
-}
-
-// 查看订单详情
-const viewOrderDetail = (orderId) => {
-  router.push(`/admin/orders?view=${orderId}`)
-}
-
 onMounted(() => {
   fetchStats()
-  fetchRecentOrders()
 })
 </script>
 
@@ -234,15 +171,14 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.recent-orders {
+.quick-links {
   border-radius: 8px;
   border: none;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 12px;
 }
 </style>

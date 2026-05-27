@@ -59,19 +59,42 @@ const authenticateJWT=async (req,res,next)=>{
 }
 
 /**
- * 管理员权限检查中间件
+ * 角色权限检查中间件
  */
-const requireAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      message: '需要管理员权限'
-    });
+const requireRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `需要 ${allowedRoles.join(' 或 ')} 权限`
+      });
+    }
+    next();
   }
-  next();
 };
+
+const requireAdmin = requireRoles('admin');
+
+/** 可选认证：有 token 则附加 req.user，无 token 也放行 */
+const optionalAuthenticateJWT = async (req, res, next) => {
+  try {
+    const token = extractTokenFromHeader(req.headers['authorization'])
+    if (!token) return next()
+    const decoded = verifyToken(token)
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, username: true, email: true, role: true }
+    })
+    if (user) req.user = user
+    next()
+  } catch (error) {
+    next()
+  }
+}
 
 module.exports={
     authenticateJWT,
-    requireAdmin
+    optionalAuthenticateJWT,
+    requireAdmin,
+    requireRoles
 }

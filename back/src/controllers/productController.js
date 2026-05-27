@@ -1,7 +1,27 @@
 // controllers/productController.js
 const { PrismaClient } = require('@prisma/client');
+const { verifyToken, extractTokenFromHeader } = require('../utils/jwt');
+const dataCollection = require('../services/dataCollectionService');
+const { normalizeImages, getMainImage } = require('../utils/productImages');
 const prisma = new PrismaClient();
 const redisClient = require('../utils/redis');
+
+function formatProductForApi(product) {
+  const images = normalizeImages(product);
+  const imageUrl =
+    images[0] || getMainImage(product) || generatePlaceholderImage(product.name, product.id);
+  return {
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    category: product.category,
+    stock: product.stock,
+    description: product.description,
+    createdAt: product.createdAt,
+    imageUrl,
+    images
+  };
+}
 /**
  * 获取商品列表
  * 根据你的Prisma模型，每个商品只有一个image字段，没有status字段
@@ -69,17 +89,7 @@ const getProducts = async (req, res) => {
     ]);
 
     // 处理图片URL，确保每个商品都有有效的图片
-    const productsWithImages = products.map(product => ({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      category: product.category,
-      stock: product.stock,
-      description: product.description,
-      createdAt: product.createdAt,
-      // 使用image字段，如果为空则使用占位图
-      imageUrl: product.image || generatePlaceholderImage(product.name, product.id)
-    }));
+    const productsWithImages = products.map((product) => formatProductForApi(product));
 
     res.json({
       success: true,
@@ -127,21 +137,10 @@ const getProductById = async (req, res) => {
         console.log('✅ 从 Redis 缓存获取商品:', productId);
         const product = JSON.parse(cachedProduct);
         
-        const formattedProduct = {
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          category: product.category,
-          stock: product.stock,
-          description: product.description,
-          createdAt: product.createdAt,
-          imageUrl: product.image || generatePlaceholderImage(product.name, product.id)
-        };
-
         return res.json({
           success: true,
-          data: formattedProduct,
-          source: 'cache',  // 标记数据来源
+          data: formatProductForApi(product),
+          source: 'cache',
           cacheHit: true
         });
       }
@@ -176,23 +175,37 @@ const getProductById = async (req, res) => {
       console.warn('❌ 商品存入缓存失败:', cacheError.message);
     }
 
-    // 格式化商品数据
-    const formattedProduct = {
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      category: product.category,
-      stock: product.stock,
-      description: product.description,
-      createdAt: product.createdAt,
-      // 注意：模型中没有updatedAt字段
-      // 使用单图字段
-      imageUrl: product.image || generatePlaceholderImage(product.name, product.id)
-    };
+    // 记录浏览（打开详情页，停留时长由前端离开时上报）
+    try {
+      const authHeader = req.headers['authorization']
+      const token = extractTokenFromHeader(authHeader)
+      if (token) {
+        const decoded = verifyToken(token)
+        if (decoded?.userId) {
+          await dataCollection.recordBrowse(req, {
+            userId: decoded.userId,
+            productId: product.id,
+            category: product.category,
+            dwellSeconds: 0
+          })
+          await prisma.userActivityLog.create({
+            data: {
+              userId: decoded.userId,
+              type: 'view_product',
+              detail: `浏览商品 ${product.name}`,
+              productId: product.id
+            }
+          })
+        }
+      }
+    } catch (logError) {
+      console.warn('记录浏览日志失败:', logError.message)
+    }
 
+    // 格式化商品数据
     res.json({
       success: true,
-      data: formattedProduct
+      data: formatProductForApi(product)
     });
     
 
@@ -273,19 +286,17 @@ const searchProducts = async (req, res) => {
         name: true,
         price: true,
         image: true,
-        category: true
+        images: true,
+        category: true,
+        stock: true,
+        description: true,
+        createdAt: true
       },
       take: parseInt(limit),
       skip: (parseInt(page) - 1) * parseInt(limit)
     });
 
-    const formattedProducts = products.map(product => ({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      category: product.category,
-      imageUrl: product.image || generatePlaceholderImage(product.name, product.id)
-    }));
+    const formattedProducts = products.map((product) => formatProductForApi(product));
 
     res.json({
       success: true,

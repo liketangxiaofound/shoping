@@ -74,11 +74,13 @@ const handleLogin=async ()=>{
     
     console.log(response);
 
-    if(response?.success){
+    if (response?.success) {
       userStore.login(response.data)
       alert('登录成功')
-      //登录成功
-      router.push('/home')
+
+      const role = response.data.user?.role
+      const targetRoute = role === 'seller' ? '/seller' : role === 'admin' ? '/admin/dashboard' : '/home'
+      router.replace(targetRoute)
       return
     }
     else{
@@ -201,5 +203,22 @@ const handleLogin=async ()=>{
 .register-link .register-text:hover {
   color: #66b1ff;
   text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .login-form {
+    width: calc(100% - 32px);
+    max-width: 400px;
+    margin: 0 16px;
+  }
+  .form-content {
+    padding: 24px 20px;
+  }
+  .register-link {
+    padding-right: 20px;
+  }
+  :deep(.el-form-item__label) {
+    width: 64px !important;
+  }
 }
 </style>

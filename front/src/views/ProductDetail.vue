@@ -47,18 +47,19 @@
               @error="handleImageError"
             />
           </div>
-          <div class="thumbnail-list">
-            <div 
-              v-for="(img, index) in imageList" 
+          <div v-if="imageList.length > 1" class="thumbnail-list">
+            <div
+              v-for="(img, index) in imageList"
               :key="index"
               class="thumbnail-item"
               :class="{ active: currentImage === img }"
               @click="currentImage = img"
             >
-              <img 
-                :src="img" 
+              <img
+                :src="img"
                 :alt="`${product.name} 缩略图 ${index + 1}`"
                 class="thumbnail-image"
+                @error="handleThumbError($event, index)"
               />
             </div>
           </div>
@@ -124,6 +125,20 @@
           </div>
         </div>
       </div>
+
+      <ProductRecommendStrip
+        v-if="alsoBought.length"
+        title="浏览过此商品的人也买了..."
+        subtitle="根据相似用户的购买与浏览记录推荐"
+        :products="alsoBought"
+      />
+
+      <ProductRecommendStrip
+        v-if="cfRecommend.length && userStore.user"
+        title="协同过滤为您推荐"
+        subtitle="根据与您兴趣相似的用户购买行为"
+        :products="cfRecommend"
+      />
     </div>
 
     <!-- 空状态（商品不存在） -->
@@ -138,13 +153,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { useUserStore } from '@/store/user'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
+import ProductRecommendStrip from '@/components/ProductRecommendStrip.vue'
+
+const alsoBought = ref([])
+const cfRecommend = ref([])
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
+const viewStartedAt = ref(Date.now())
 
 // 响应式数据
 const product = ref(null)
@@ -170,10 +192,10 @@ const fetchProduct = async () => {
     
     if (response.success) {
       product.value = response.data
-      // 设置默认图片
-      if (product.value.imageUrl) {
-        currentImage.value = product.value.imageUrl
-      }
+      viewStartedAt.value = Date.now()
+      const list = imageList.value
+      currentImage.value = list[0] || product.value.imageUrl || ''
+      fetchRecommendations(productId)
     } else {
       throw new Error(response.message || '获取商品详情失败')
     }
@@ -187,32 +209,40 @@ const fetchProduct = async () => {
 }
 
 // 获取商品图片
+const IMAGE_FALLBACK =
+  'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800&q=80'
+
 const getProductImage = (product) => {
-  if (!product) return 'https://via.placeholder.com/500x500/f0f0f0/969696?text=商品图片'
-  return product.imageUrl || 'https://via.placeholder.com/500x500/f0f0f0/969696?text=商品图片'
+  if (!product) return IMAGE_FALLBACK
+  return product.imageUrl || IMAGE_FALLBACK
 }
 
-// 图片列表（模拟多图）
+// 商品图集（仅展示真实 URL，无图时不生成假缩略图）
 const imageList = computed(() => {
   if (!product.value) return []
-  
-  const images = []
-  // 主图
+  const fromApi = product.value.images
+  if (Array.isArray(fromApi) && fromApi.length > 0) {
+    return [...new Set(fromApi.filter((u) => typeof u === 'string' && u.trim()))]
+  }
   if (product.value.imageUrl) {
-    images.push(product.value.imageUrl)
+    return [product.value.imageUrl]
   }
-  
-  // 添加一些模拟的额外图片
-  for (let i = 1; i <= 3; i++) {
-    images.push(`https://via.placeholder.com/500x500/f0f0f0/969696?text=商品图${i}`)
-  }
-  
-  return images
+  return []
 })
 
-// 图片加载失败处理
 const handleImageError = (event) => {
-  event.target.src = 'https://via.placeholder.com/500x500/f0f0f0/969696?text=图片加载失败'
+  if (event.target.dataset.fallback === '1') return
+  event.target.dataset.fallback = '1'
+  event.target.src = IMAGE_FALLBACK
+}
+
+const handleThumbError = (event, index) => {
+  const list = imageList.value
+  if (list[index]) {
+    event.target.src = list[0]
+  } else {
+    handleImageError(event)
+  }
 }
 
 // 格式化日期
@@ -270,8 +300,47 @@ const retry = () => {
   fetchProduct()
 }
 
+const fetchRecommendations = async (productId) => {
+  try {
+    const alsoRes = await request.get(`/api/recommendations/also-bought/${productId}`, {
+      params: { limit: 8 }
+    })
+    if (alsoRes.success) {
+      alsoBought.value = alsoRes.data.products || []
+    }
+    if (userStore.user) {
+      const cfRes = await request.get('/api/recommendations/for-you', { params: { limit: 6 } })
+      if (cfRes.success) {
+        const list = cfRes.data.products || []
+        const ids = new Set([productId, ...alsoBought.value.map((p) => p.id)])
+        cfRecommend.value = list.filter((p) => !ids.has(p.id))
+      }
+    }
+  } catch {
+    // 推荐失败不影响详情页
+  }
+}
+
+const reportBrowseDuration = async () => {
+  if (!product.value?.id || !userStore.user) return
+  const dwellSeconds = Math.max(1, Math.round((Date.now() - viewStartedAt.value) / 1000))
+  try {
+    await request.post('/api/analytics/browse', {
+      productId: product.value.id,
+      category: product.value.category || '未分类',
+      dwellSeconds
+    })
+  } catch {
+    // 采集失败不影响用户操作
+  }
+}
+
 onMounted(() => {
   fetchProduct()
+})
+
+onBeforeUnmount(() => {
+  reportBrowseDuration()
 })
 </script>
 
@@ -281,6 +350,7 @@ onMounted(() => {
   margin: 0 auto;
   padding: 20px;
   min-height: calc(100vh - 60px);
+  text-align: left;
 }
 
 .loading-container,

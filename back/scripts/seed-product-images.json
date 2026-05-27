@@ -1,0 +1,107 @@
+[
+  {
+    "name": "iPhone 15",
+    "category": "手机",
+    "price": 5999,
+    "stock": 80,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192639910_7912q7.webp"
+  },
+  {
+    "name": "华为 Mate 60",
+    "category": "手机",
+    "price": 5499,
+    "stock": 70,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192640313_vzpohn.webp"
+  },
+  {
+    "name": "小米 14",
+    "category": "手机",
+    "price": 3999,
+    "stock": 90,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192640702_y6r699.webp"
+  },
+  {
+    "name": "三星 Galaxy S24",
+    "category": "手机",
+    "price": 5199,
+    "stock": 75,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192641082_5scz0e.webp"
+  },
+  {
+    "name": "MacBook Pro 14",
+    "category": "电脑",
+    "price": 12999,
+    "stock": 40,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192641466_nambxn.webp"
+  },
+  {
+    "name": "MacBook Air",
+    "category": "电脑",
+    "price": 8999,
+    "stock": 55,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192641862_tca89t.webp"
+  },
+  {
+    "name": "ROG 游戏本",
+    "category": "电脑",
+    "price": 9999,
+    "stock": 25,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192642264_lqgk4p.webp"
+  },
+  {
+    "name": "AirPods Pro 2",
+    "category": "耳机",
+    "price": 1899,
+    "stock": 150,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192642661_sytufs.webp"
+  },
+  {
+    "name": "Sony WH-1000XM5",
+    "category": "耳机",
+    "price": 2499,
+    "stock": 80,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192643039_9r5hax.webp"
+  },
+  {
+    "name": "Bose QC45",
+    "category": "耳机",
+    "price": 2299,
+    "stock": 70,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192643434_ytyv9d.webp"
+  },
+  {
+    "name": "iPad Pro 12.9",
+    "category": "平板",
+    "price": 8999,
+    "stock": 50,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192643830_xmzj09.webp"
+  },
+  {
+    "name": "华为 MatePad",
+    "category": "平板",
+    "price": 3299,
+    "stock": 55,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192644221_vlzd0j.webp"
+  },
+  {
+    "name": "Apple Watch Ultra",
+    "category": "配件",
+    "price": 6299,
+    "stock": 40,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192644613_dw4o50.webp"
+  },
+  {
+    "name": "戴森吹风机",
+    "category": "家电",
+    "price": 2990,
+    "stock": 30,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192645002_1iwgyi.webp"
+  },
+  {
+    "name": "兰蔻小黑瓶",
+    "category": "美妆",
+    "price": 1080,
+    "stock": 60,
+    "image": "http://test-linger.oss-cn-guangzhou.aliyuncs.com/seed-products/1779192645387_95yvyg.webp"
+  }
+]

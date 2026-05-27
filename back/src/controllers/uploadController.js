@@ -10,7 +10,8 @@ class UploadController {
    */
   async uploadImage(req, res) {
     try {
-      if (!req.file) {
+      const file = req.file || (req.files && req.files[0])
+      if (!file) {
         return res.status(400).json({
           success: false,
           message: '请选择要上传的图片'
@@ -18,14 +19,15 @@ class UploadController {
       }
 
       console.log('📤 接收上传请求:', {
-        filename: req.file.originalname,
-        size: req.file.size,
-        mimetype: req.file.mimetype
+        fieldname: file.fieldname,
+        filename: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype
       })
 
       const { prefix = 'uploads', compress = true } = req.body
 
-      const result = await uploadService.uploadImage(req.file, {
+      const result = await uploadService.uploadImage(file, {
         prefix,
         compress
       })
@@ -105,7 +107,8 @@ class UploadController {
    */
   async uploadProductImage(req, res) {
     try {
-      if (!req.file) {
+      const file = req.file || (req.files && req.files[0])
+      if (!file) {
         return res.status(400).json({
           success: false,
           message: '请选择要上传的图片'
@@ -127,7 +130,7 @@ class UploadController {
         }
       }
 
-      const result = await uploadService.uploadImage(req.file, {
+      const result = await uploadService.uploadImage(file, {
         prefix: 'products',
         compress: true
       })

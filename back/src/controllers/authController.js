@@ -2,6 +2,7 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { generateToken } = require('../utils/jwt');
+const dataCollection = require('../services/dataCollectionService');
 const prisma = new PrismaClient();
 
 /**
@@ -57,6 +58,8 @@ async function login(req, res) {
 
     // 移除密码字段
     const { password: _, ...userWithoutPassword } = user;
+
+    await dataCollection.recordLogin(req, userWithoutPassword);
 
     res.json({
       success: true,
@@ -145,7 +148,7 @@ async function register(req, res) {
         username,
         password: hashedPassword,
         email, // 添加邮箱字段
-        role: 'user'
+        role: 'customer'
       },
       select: {
         id: true,

@@ -3,9 +3,9 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  color: #22303f;
+  background-color: #f5f7fb;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -15,17 +15,67 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: #409eff;
   text-decoration: inherit;
 }
 a:hover {
-  color: #535bf2;
+  color: #2a78d6;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #f5f7fb;
+}
+
+@media (max-width: 900px) {
+  body {
+    font-size: 14px;
+  }
+
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .admin-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 16px;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+
+  .content {
+    padding: 16px;
+  }
+
+  .el-card,
+  .stat-card,
+  .report-card,
+  .recent-orders {
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .el-table th,
+  .el-table td {
+    padding: 8px 10px;
+  }
+
+  .el-button,
+  .el-input__inner {
+    font-size: 14px;
+  }
 }
 
 h1 {

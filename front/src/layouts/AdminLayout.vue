@@ -2,7 +2,7 @@
 <template>
   <div class="admin-layout">
     <!-- 侧边栏 -->
-    <aside class="sidebar">
+    <aside class="sidebar desktop-only">
       <div class="logo">
         <h2>管理后台</h2>
       </div>
@@ -18,26 +18,90 @@
           <el-icon><Odometer /></el-icon>
           <span>仪表板</span>
         </el-menu-item>
-        <el-menu-item index="/admin/products">
-          <el-icon><Goods /></el-icon>
-          <span>商品管理</span>
-        </el-menu-item>
-        <el-menu-item index="/admin/orders">
-          <el-icon><List /></el-icon>
-          <span>订单管理</span>
-        </el-menu-item>
-        <!-- <el-menu-item index="/admin/users">
+        <el-menu-item index="/admin/sellers">
           <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item> -->
+          <span>销售人员管理</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/sellers/performance">
+          <el-icon><TrendCharts /></el-icon>
+          <span>销售业绩监控</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/reports/sales">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>销售报表</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/collection">
+          <el-icon><Document /></el-icon>
+          <span>数据采集</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/user-profiles">
+          <el-icon><UserFilled /></el-icon>
+          <span>用户画像</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-trend-chart">
+          <el-icon><TrendCharts /></el-icon>
+          <span>销售趋势图</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-trend">
+          <el-icon><DataLine /></el-icon>
+          <span>销售趋势预测</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-anomalies">
+          <el-icon><Warning /></el-icon>
+          <span>销售异常监控</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-ranking">
+          <el-icon><Trophy /></el-icon>
+          <span>销售排行榜</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/anti-crawler">
+          <el-icon><Lock /></el-icon>
+          <span>反爬虫监控</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/data-screen">
+          <el-icon><Monitor /></el-icon>
+          <span>数据可视化大屏</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/data-io">
+          <el-icon><Upload /></el-icon>
+          <span>数据导入导出</span>
+        </el-menu-item>
       </el-menu>
     </aside>
+
+    <el-drawer v-model="drawerVisible" direction="ltr" size="260px" title="管理菜单" class="mobile-drawer">
+      <el-menu
+        router
+        :default-active="$route.path"
+        background-color="#304156"
+        text-color="#bfcbd9"
+        active-text-color="#409EFF"
+        @select="drawerVisible = false"
+      >
+        <el-menu-item index="/admin/dashboard">仪表板</el-menu-item>
+        <el-menu-item index="/admin/sellers">销售人员管理</el-menu-item>
+        <el-menu-item index="/admin/sellers/performance">销售业绩监控</el-menu-item>
+        <el-menu-item index="/admin/reports/sales">销售报表</el-menu-item>
+        <el-menu-item index="/admin/analytics/collection">数据采集</el-menu-item>
+        <el-menu-item index="/admin/analytics/user-profiles">用户画像</el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-trend-chart">销售趋势图</el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-trend">销售趋势预测</el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-anomalies">销售异常监控</el-menu-item>
+        <el-menu-item index="/admin/analytics/sales-ranking">销售排行榜</el-menu-item>
+        <el-menu-item index="/admin/anti-crawler">反爬虫监控</el-menu-item>
+        <el-menu-item index="/admin/data-screen">数据可视化大屏</el-menu-item>
+        <el-menu-item index="/admin/data-io">数据导入导出</el-menu-item>
+      </el-menu>
+    </el-drawer>
 
     <!-- 主内容区 -->
     <main class="main-content">
       <!-- 顶部导航 -->
       <header class="admin-header">
         <div class="header-left">
+          <el-button class="menu-toggle mobile-only" text @click="drawerVisible = true">
+            <el-icon :size="22"><Menu /></el-icon>
+          </el-button>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/admin/dashboard' }">首页</el-breadcrumb-item>
             <el-breadcrumb-item>{{ currentPageTitle }}</el-breadcrumb-item>
@@ -58,17 +122,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/store/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Odometer, 
-  Goods, 
-  List, 
-  User 
+  User,
+  DataAnalysis,
+  TrendCharts,
+  Document,
+  UserFilled,
+  Warning,
+  Trophy,
+  DataLine,
+  Lock,
+  Monitor,
+  Menu,
+  Upload
 } from '@element-plus/icons-vue'
 
+const drawerVisible = ref(false)
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -77,9 +151,18 @@ const userStore = useUserStore()
 const currentPageTitle = computed(() => {
   const map = {
     '/admin/dashboard': '仪表板',
-    '/admin/products': '商品管理',
-    '/admin/orders': '订单管理',
-    // '/admin/users': '用户管理'
+    '/admin/sellers': '销售人员管理',
+    '/admin/sellers/performance': '销售业绩监控',
+    '/admin/reports/sales': '销售统计报表',
+    '/admin/analytics/collection': '数据采集',
+    '/admin/analytics/user-profiles': '用户画像',
+    '/admin/analytics/sales-trend-chart': '销售趋势图',
+    '/admin/analytics/sales-trend': '销售趋势预测',
+    '/admin/analytics/sales-anomalies': '销售异常监控',
+    '/admin/analytics/sales-ranking': '销售排行榜',
+    '/admin/anti-crawler': '反爬虫监控',
+    '/admin/data-screen': '数据可视化大屏',
+    '/admin/data-io': '数据导入导出'
   }
   return map[route.path] || '管理后台'
 })
@@ -173,5 +256,27 @@ const handleLogout = async () => {
   flex: 1;
   padding: 20px;
   overflow: auto;
+  text-align: left;
+}
+
+.content :deep(.el-table) {
+  width: 100%;
+  text-align: left;
+}
+
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: inline-flex;
+  }
+  .menu-toggle {
+    margin-right: 4px;
+  }
 }
 </style>

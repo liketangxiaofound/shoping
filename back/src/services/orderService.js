@@ -1,5 +1,6 @@
 // services/orderService.js
 const { PrismaClient } = require('@prisma/client');
+const dataCollection = require('./dataCollectionService');
 const prisma = new PrismaClient();
 
 /**
@@ -27,7 +28,8 @@ const createOrderFromCart = async (userId, address, note = '') => {
             name: true,
             price: true,
             stock: true,
-            status: true
+            status: true,
+            category: true
           }
         }
       }
@@ -65,7 +67,8 @@ const createOrderFromCart = async (userId, address, note = '') => {
       validItems.push({
         productId: product.id,
         quantity: item.quantity,
-        price: product.price
+        price: product.price,
+        category: product.category || '未分类'
       });
     }
 
@@ -138,6 +141,21 @@ const createOrderFromCart = async (userId, address, note = '') => {
       where: { userId }
     });
 
+    await tx.userActivityLog.create({
+      data: {
+        userId,
+        type: 'create_order',
+        detail: `创建订单 ${order.orderNo}`,
+        orderId: order.id
+      }
+    });
+
+    await dataCollection.recordPurchaseRecords(tx, {
+      userId,
+      order,
+      items: validItems
+    });
+
     return order;
   });
 };
@@ -145,14 +163,14 @@ const createOrderFromCart = async (userId, address, note = '') => {
 /**
  * 处理模拟支付
  */
-const processSimulatedPayment = async (orderId, paymentMethod = 'simulated') => {
+const processSimulatedPayment = async (orderId, userId, paymentMethod = 'simulated') => {
   return await prisma.$transaction(async (tx) => {
-    // 1. 获取订单
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
         user: {
           select: {
+            id: true,
             email: true,
             username: true
           }
@@ -164,18 +182,15 @@ const processSimulatedPayment = async (orderId, paymentMethod = 'simulated') => 
       throw new Error('订单不存在');
     }
 
+    if (order.userId !== userId) {
+      throw new Error('无权支付此订单');
+    }
+
     if (order.status !== 'pending') {
       throw new Error('订单状态无效，无法支付');
     }
 
-    // 2. 模拟支付（90%成功率）
-    const isSuccess = Math.random() > 0.1;
-
-    if (!isSuccess) {
-      throw new Error('模拟支付失败，请重试');
-    }
-
-    // 3. 更新订单状态
+    // 更新订单状态（模拟支付，始终成功）
     const updatedOrder = await tx.order.update({
       where: { id: orderId },
       data: {
@@ -200,6 +215,15 @@ const processSimulatedPayment = async (orderId, paymentMethod = 'simulated') => 
             email: true
           }
         }
+      }
+    });
+
+    await tx.userActivityLog.create({
+      data: {
+        userId: order.userId,
+        type: 'pay_order',
+        detail: `支付订单 ${updatedOrder.orderNo}`,
+        orderId: updatedOrder.id
       }
     });
 

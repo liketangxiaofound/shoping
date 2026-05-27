@@ -1,0 +1,132 @@
+/* 3.4 移动端适配 — 全局响应式增强 */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+#app {
+  padding: 0 !important;
+  text-align: initial;
+  max-width: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 安全区（刘海屏） */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* 管理后台移动端 */
+@media (max-width: 900px) {
+  .admin-layout {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .admin-layout .sidebar.desktop-only {
+    display: none;
+  }
+
+  .admin-layout .main-content {
+    width: 100%;
+    min-height: calc(100vh - 52px);
+  }
+
+  .admin-layout .admin-header {
+    height: auto;
+    min-height: 52px;
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .admin-layout .header-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .admin-layout .header-left .el-breadcrumb {
+    font-size: 12px;
+  }
+
+  .admin-layout .content {
+    padding: 12px;
+  }
+
+  .admin-layout .admin-info {
+    display: none;
+  }
+}
+
+/* 卖家后台 */
+@media (max-width: 768px) {
+  .seller-view {
+    padding: 12px 12px 24px !important;
+  }
+
+  .seller-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .seller-nav-card .el-menu--horizontal {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .seller-nav-card .el-menu-item {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+}
+
+/* Element Plus 表格横向滚动 */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive .el-table {
+  min-width: 560px;
+}
+
+/* 表单单列 */
+@media (max-width: 640px) {
+  .el-form--inline .el-form-item {
+    display: block;
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .el-dialog {
+    width: 92% !important;
+    max-width: 92vw;
+  }
+
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .page-header h2 {
+    font-size: 18px;
+  }
+}
+
+/* 客户页底部导航留白 */
+.has-mobile-nav {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0));
+}
+
+@media (min-width: 769px) {
+  .mobile-bottom-nav {
+    display: none !important;
+  }
+  .has-mobile-nav {
+    padding-bottom: 0;
+  }
+}
