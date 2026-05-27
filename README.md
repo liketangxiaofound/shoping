@@ -7,7 +7,7 @@ B2C 电商课程设计项目：Vue 3 前端 + Node.js/Express 后端 + PostgreSQ
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3、Vite、Element Plus、Pinia、Vue Router、ECharts |
-| 后端 | Node.js、Express、Prisma、PostgreSQL、Redis（可选） |
+| 后端 | Node.js、Express、Prisma、PostgreSQL、Redis |
 | 部署 | Docker Compose（后端 + 数据库 + Redis）、Nginx（前端静态 + `/api` 反代） |
 
 ## 目录结构
@@ -67,12 +67,7 @@ npm run dev              # http://localhost:3001
 
 ## 在线演示
 
-- 站点首页：http://8.155.175.119/
-- 登录页：http://8.155.175.119/#/login
-- 管理后台：http://8.155.175.119/#/admin/dashboard（账号 `admin` / `123456`）
-- 卖家中心：http://8.155.175.119/#/seller/products（账号 `seller1` / `123456`）
-
-> 当前为 HTTP 访问，请勿使用 `https://`。
+部署后填写：`http://8.155.175.119/#/login`
 
 ## 仓库
 
@@ -80,5 +75,4 @@ npm run dev              # http://localhost:3001
 
 ## 说明
 
-- 敏感配置（`.env`、OSS 密钥等）请勿提交到 Git
 - 卖家分类管理由平台维护，卖家端仅可选择已有分类
