@@ -67,7 +67,12 @@ npm run dev              # http://localhost:3001
 
 ## 在线演示
 
-部署后填写：`http://<服务器IP>/#/login`
+- 站点首页：http://8.155.175.119/
+- 登录页：http://8.155.175.119/#/login
+- 管理后台：http://8.155.175.119/#/admin/dashboard（账号 `admin` / `123456`）
+- 卖家中心：http://8.155.175.119/#/seller/products（账号 `seller1` / `123456`）
+
+> 当前为 HTTP 访问，请勿使用 `https://`。
 
 ## 仓库
 
